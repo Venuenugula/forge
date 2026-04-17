@@ -4,9 +4,9 @@ import os
 
 from forge.envs import create_env, get_env_site_packages
 from forge.fingerprint import generate_fingerprint, get_store_path
-from forge.gc import gc_dry_run
+from forge.gc import doctor_check, gc_apply, gc_dry_run
 from forge.linker import link_store_into_env
-from forge.metadata import get_connection, init_db, register_package
+from forge.metadata import get_connection, init_db, list_packages, register_package
 
 
 def _seed_store_package(name: str, version: str, size: int = 16) -> None:
@@ -37,5 +37,51 @@ def test_gc_dry_run_reports_only_unlinked_store_packages(tmp_path) -> None:
         assert ("pandas", "2.2.1") in names
         assert ("numpy", "1.26.4") not in names
         assert result.reclaimable_bytes > 0
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_gc_apply_deletes_unused_and_metadata_rows(tmp_path) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        _seed_store_package("orphan", "0.1.0", size=32)
+        root = get_store_path(generate_fingerprint("orphan", "0.1.0"))
+        assert root.exists()
+
+        report = gc_apply(force=True)
+        assert any(item.name == "orphan" for item in report.unused)
+        assert not root.exists()
+
+        conn = get_connection()
+        try:
+            init_db(conn)
+            rows = list_packages(conn)
+            assert all(row["name"] != "orphan" for row in rows)
+        finally:
+            conn.close()
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_doctor_reports_missing_metadata_and_broken_symlink(tmp_path) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        _seed_store_package("ghost", "9.9.9", size=8)
+        ghost_root = get_store_path(generate_fingerprint("ghost", "9.9.9"))
+        # Leave metadata row but remove files to simulate corruption.
+        import shutil
+
+        shutil.rmtree(ghost_root)
+
+        create_env("ml")
+        broken_target = tmp_path / "missing_target"
+        broken_link = get_env_site_packages("ml") / "broken_pkg"
+        broken_link.symlink_to(broken_target)
+
+        report = doctor_check()
+        assert report.ok is False
+        kinds = {issue.kind for issue in report.issues}
+        assert "metadata_missing_path" in kinds
+        assert "broken_symlink" in kinds
     finally:
         os.environ.pop("FORGE_HOME", None)

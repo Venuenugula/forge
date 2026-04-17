@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 
 from forge.cli import main
 from forge.envs import create_env, load_env_config
-from forge.models import CandidateEntry, InspectCandidates, ResolveResult, GCReport
+from forge.models import CandidateEntry, DoctorIssue, DoctorReport, InspectCandidates, ResolveResult, GCReport
 
 
 def test_cli_inspect_prints_candidates(tmp_path, monkeypatch) -> None:
@@ -89,6 +89,21 @@ def test_cli_gc_json_output(monkeypatch) -> None:
     assert code == 0
     assert payload["reclaimable_bytes"] == 0
     assert payload["unused"] == []
+
+
+def test_cli_doctor_json_output(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "forge.cli.doctor_check",
+        lambda: DoctorReport(ok=False, issues=[DoctorIssue(kind="broken_symlink", path="/tmp/x", detail="bad")]),
+    )
+    monkeypatch.setattr(sys, "argv", ["forge", "doctor", "--json"])
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = main()
+    payload = json.loads(out.getvalue())
+    assert code == 0
+    assert payload["ok"] is False
+    assert payload["issues"][0]["kind"] == "broken_symlink"
 
 
 def test_cli_activate_prints_layered_exports(tmp_path, monkeypatch) -> None:

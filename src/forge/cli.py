@@ -4,7 +4,7 @@ import argparse
 import json
 
 from .envs import create_env, parent_chain
-from .gc import gc_dry_run
+from .gc import doctor_check, gc_apply, gc_dry_run
 from .resolver import detect_mode, inspect_candidates, resolve_package
 from .pip_shim import install_local, install_to_store
 from .runtime import activation_exports
@@ -42,7 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     gc_cmd = sub.add_parser("gc", help="Garbage collection")
     gc_cmd.add_argument("--dry-run", action="store_true", help="Preview reclaimable packages")
+    gc_cmd.add_argument("--force", action="store_true", help="Apply deletion of unused packages")
     gc_cmd.add_argument("--json", action="store_true", help="Print JSON output")
+
+    doctor_cmd = sub.add_parser("doctor", help="Check metadata/filesystem consistency")
+    doctor_cmd.add_argument("--json", action="store_true", help="Print JSON output")
 
     pip_cmd = sub.add_parser("pip", help="Store-first pip wrapper")
     pip_sub = pip_cmd.add_subparsers(dest="pip_command", required=True)
@@ -104,18 +108,35 @@ def main() -> int:
         return 0
 
     if args.command == "gc":
-        if not args.dry_run:
-            parser.error("Only --dry-run is supported in MVP")
-        result = gc_dry_run()
+        if not args.dry_run and not args.force:
+            parser.error("Use either --dry-run or --force")
+        result = gc_apply(force=True) if args.force else gc_dry_run()
         if args.json:
             print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
             return 0
-        print("Unused:")
+        if args.force:
+            print("Deleted:")
+        else:
+            print("Unused:")
         for row in result.unused:
             mib = row.size_bytes / (1024 * 1024)
             print(f"- {row.name} {row.version} ({mib:.2f} MiB)")
         total_mib = result.reclaimable_bytes / (1024 * 1024)
-        print(f"Total reclaimable: {total_mib:.2f} MiB")
+        label = "Total reclaimed" if args.force else "Total reclaimable"
+        print(f"{label}: {total_mib:.2f} MiB")
+        return 0
+
+    if args.command == "doctor":
+        report = doctor_check()
+        if args.json:
+            print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+            return 0
+        if report.ok:
+            print("Doctor check: OK")
+            return 0
+        print("Doctor check: issues found")
+        for issue in report.issues:
+            print(f"- [{issue.kind}] {issue.path} :: {issue.detail}")
         return 0
 
     if args.command == "pip" and args.pip_command == "install":

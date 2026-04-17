@@ -60,3 +60,22 @@ class GCReport:
             "unused": [item.to_dict() for item in self.unused],
             "reclaimable_bytes": self.reclaimable_bytes,
         }
+
+
+@dataclass(frozen=True)
+class DoctorIssue:
+    kind: str
+    path: str
+    detail: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class DoctorReport:
+    ok: bool
+    issues: list[DoctorIssue]
+
+    def to_dict(self) -> dict:
+        return {"ok": self.ok, "issues": [i.to_dict() for i in self.issues]}
