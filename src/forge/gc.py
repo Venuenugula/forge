@@ -5,6 +5,7 @@ from pathlib import Path
 from .config import get_store_dir
 from .envs import get_env_site_packages, list_env_names
 from .metadata import get_connection, init_db, list_packages
+from .models import GCReport, GCUnusedEntry
 
 
 def _dir_size_bytes(path: Path) -> int:
@@ -34,7 +35,7 @@ def _used_store_roots() -> set[Path]:
     return used
 
 
-def gc_dry_run() -> dict:
+def gc_dry_run() -> GCReport:
     conn = get_connection()
     try:
         init_db(conn)
@@ -43,7 +44,7 @@ def gc_dry_run() -> dict:
         conn.close()
 
     used_roots = _used_store_roots()
-    unused: list[dict] = []
+    unused: list[GCUnusedEntry] = []
     reclaimable = 0
     for row in rows:
         path = Path(row["path"])
@@ -52,13 +53,13 @@ def gc_dry_run() -> dict:
         size = _dir_size_bytes(path)
         reclaimable += size
         unused.append(
-            {
-                "name": row["name"],
-                "version": row["version"],
-                "path": str(path),
-                "size_bytes": size,
-                "ref_count": row["ref_count"],
-            }
+            GCUnusedEntry(
+                name=row["name"],
+                version=row["version"],
+                path=str(path),
+                size_bytes=size,
+                ref_count=row["ref_count"],
+            )
         )
 
-    return {"unused": unused, "reclaimable_bytes": reclaimable}
+    return GCReport(unused=unused, reclaimable_bytes=reclaimable)

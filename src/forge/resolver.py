@@ -6,6 +6,7 @@ from pathlib import Path
 from .config import get_store_dir
 from .envs import get_env_site_packages, parent_chain
 from .metadata import get_connection, init_db, list_packages
+from .models import CandidateEntry, InspectCandidates, ResolveResult
 
 
 def detect_mode() -> str:
@@ -38,35 +39,31 @@ def _global_versions(pkg_name: str) -> list[str]:
         conn.close()
 
 
-def inspect_candidates(pkg_name: str, env_name: str) -> dict:
+def inspect_candidates(pkg_name: str, env_name: str) -> InspectCandidates:
     local_path = get_env_site_packages(env_name) / pkg_name
-    local_entry = {
-        "exists": local_path.exists(),
-        "version": _package_version_from_site_path(local_path) if local_path.exists() else None,
-        "path": str(local_path),
-    }
+    local_entry = CandidateEntry(
+        exists=local_path.exists(),
+        version=_package_version_from_site_path(local_path) if local_path.exists() else None,
+        path=str(local_path),
+    )
 
-    parents: list[dict] = []
+    parents: list[CandidateEntry] = []
     for parent in parent_chain(env_name):
         candidate = get_env_site_packages(parent) / pkg_name
         parents.append(
-            {
-                "env": parent,
-                "exists": candidate.exists(),
-                "version": _package_version_from_site_path(candidate) if candidate.exists() else None,
-                "path": str(candidate),
-            }
+            CandidateEntry(
+                env=parent,
+                exists=candidate.exists(),
+                version=_package_version_from_site_path(candidate) if candidate.exists() else None,
+                path=str(candidate),
+            )
         )
 
     global_versions = _global_versions(pkg_name)
-    return {
-        "local": local_entry,
-        "parents": parents,
-        "global_versions": global_versions,
-    }
+    return InspectCandidates(local=local_entry, parents=parents, global_versions=global_versions)
 
 
-def resolve_package(pkg_name: str, env_name: str, mode: str | None = None) -> dict:
+def resolve_package(pkg_name: str, env_name: str, mode: str | None = None) -> ResolveResult:
     resolved_mode = mode or detect_mode()
     warnings: list[str] = []
 
@@ -94,12 +91,12 @@ def resolve_package(pkg_name: str, env_name: str, mode: str | None = None) -> di
                 raise RuntimeError(msg)
             if resolved_mode == "warn":
                 warnings.append(msg)
-        return {"source": "local", "version": local_version, "warnings": warnings}
+        return ResolveResult(source="local", version=local_version, warnings=warnings)
 
     if parent_found:
-        return {"source": f"parent:{parent_found[0]}", "version": parent_found[1], "warnings": warnings}
+        return ResolveResult(source=f"parent:{parent_found[0]}", version=parent_found[1], warnings=warnings)
 
     if global_version:
-        return {"source": "global", "version": global_version, "warnings": warnings}
+        return ResolveResult(source="global", version=global_version, warnings=warnings)
 
     raise RuntimeError(f"Package not found in local/parent/global layers: {pkg_name}")

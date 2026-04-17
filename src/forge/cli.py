@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 
 from .envs import create_env, parent_chain
 from .gc import gc_dry_run
@@ -34,12 +35,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Resolution conflict mode",
     )
+    inspect_cmd.add_argument("--json", action="store_true", help="Print JSON output")
 
     tree_cmd = sub.add_parser("tree", help="Show env parent chain")
     tree_cmd.add_argument("env", help="Environment name")
 
     gc_cmd = sub.add_parser("gc", help="Garbage collection")
     gc_cmd.add_argument("--dry-run", action="store_true", help="Preview reclaimable packages")
+    gc_cmd.add_argument("--json", action="store_true", help="Print JSON output")
 
     pip_cmd = sub.add_parser("pip", help="Store-first pip wrapper")
     pip_sub = pip_cmd.add_subparsers(dest="pip_command", required=True)
@@ -73,16 +76,25 @@ def main() -> int:
     if args.command == "inspect":
         candidates = inspect_candidates(args.pkg, args.env)
         result = resolve_package(args.pkg, args.env, mode=args.mode or detect_mode())
-        print(f"[inspect] package={args.pkg} source={result['source']} version={result['version']}")
-        local = candidates["local"]
-        print(f"[candidate:local] exists={local['exists']} version={local['version']} path={local['path']}")
-        for parent in candidates["parents"]:
+        if args.json:
+            payload = {
+                "package": args.pkg,
+                "resolution": result.to_dict(),
+                "candidates": candidates.to_dict(),
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0
+
+        print(f"[inspect] package={args.pkg} source={result.source} version={result.version}")
+        local = candidates.local
+        print(f"[candidate:local] exists={local.exists} version={local.version} path={local.path}")
+        for parent in candidates.parents:
             print(
-                f"[candidate:parent:{parent['env']}] exists={parent['exists']} "
-                f"version={parent['version']} path={parent['path']}"
+                f"[candidate:parent:{parent.env}] exists={parent.exists} "
+                f"version={parent.version} path={parent.path}"
             )
-        print(f"[candidate:global] versions={candidates['global_versions']}")
-        for warning in result["warnings"]:
+        print(f"[candidate:global] versions={candidates.global_versions}")
+        for warning in result.warnings:
             print(f"[warn] {warning}")
         return 0
 
@@ -95,11 +107,14 @@ def main() -> int:
         if not args.dry_run:
             parser.error("Only --dry-run is supported in MVP")
         result = gc_dry_run()
+        if args.json:
+            print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+            return 0
         print("Unused:")
-        for row in result["unused"]:
-            mib = row["size_bytes"] / (1024 * 1024)
-            print(f"- {row['name']} {row['version']} ({mib:.2f} MiB)")
-        total_mib = result["reclaimable_bytes"] / (1024 * 1024)
+        for row in result.unused:
+            mib = row.size_bytes / (1024 * 1024)
+            print(f"- {row.name} {row.version} ({mib:.2f} MiB)")
+        total_mib = result.reclaimable_bytes / (1024 * 1024)
         print(f"Total reclaimable: {total_mib:.2f} MiB")
         return 0
 

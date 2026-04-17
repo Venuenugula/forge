@@ -52,9 +52,9 @@ def test_resolve_prefers_local_and_warns_on_downgrade(tmp_path) -> None:
         link_store_into_env(child_pkg, get_env_site_packages("child"))
 
         result = resolve_package("numpy", "child", mode="warn")
-        assert result["source"] == "local"
-        assert result["version"] == "1.20.0"
-        assert len(result["warnings"]) == 1
+        assert result.source == "local"
+        assert result.version == "1.20.0"
+        assert len(result.warnings) == 1
     finally:
         os.environ.pop("FORGE_HOME", None)
 
@@ -88,10 +88,10 @@ def test_inspect_candidates_reports_layer_presence(tmp_path) -> None:
         link_store_into_env(base_pkg, get_env_site_packages("base"))
 
         candidates = inspect_candidates("numpy", "child")
-        assert candidates["local"]["exists"] is False
-        assert len(candidates["parents"]) == 1
-        assert candidates["parents"][0]["env"] == "base"
-        assert candidates["parents"][0]["exists"] is True
-        assert "1.26.4" in candidates["global_versions"]
+        assert candidates.local.exists is False
+        assert len(candidates.parents) == 1
+        assert candidates.parents[0].env == "base"
+        assert candidates.parents[0].exists is True
+        assert "1.26.4" in candidates.global_versions
     finally:
         os.environ.pop("FORGE_HOME", None)

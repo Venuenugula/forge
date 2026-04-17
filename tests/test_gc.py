@@ -33,9 +33,9 @@ def test_gc_dry_run_reports_only_unlinked_store_packages(tmp_path) -> None:
         link_store_into_env(numpy_root, get_env_site_packages("ml"))
 
         result = gc_dry_run()
-        names = {(row["name"], row["version"]) for row in result["unused"]}
+        names = {(row.name, row.version) for row in result.unused}
         assert ("pandas", "2.2.1") in names
         assert ("numpy", "1.26.4") not in names
-        assert result["reclaimable_bytes"] > 0
+        assert result.reclaimable_bytes > 0
     finally:
         os.environ.pop("FORGE_HOME", None)
