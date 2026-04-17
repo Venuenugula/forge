@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import platform
 import subprocess
 import sys
 from pathlib import Path
 
-from .envs import get_env_site_packages, record_package
+from .envs import get_env_site_packages, load_env_config, record_package
 from .fingerprint import generate_fingerprint, get_store_path
 from .linker import link_store_into_env
 from .metadata import (
@@ -52,6 +53,14 @@ def install_to_store(
         register_package(conn, fingerprint, store_path)
 
         if env_name:
+            env_cfg = load_env_config(env_name)
+            env_python = env_cfg.get("python_version")
+            runtime_python = platform.python_version()
+            if env_python and env_python.split(".")[:2] != runtime_python.split(".")[:2]:
+                raise RuntimeError(
+                    f"Python version mismatch for env '{env_name}': "
+                    f"env={env_python}, runtime={runtime_python}"
+                )
             env_site_packages = get_env_site_packages(env_name)
             link_store_into_env(store_path, env_site_packages)
             increment_ref_count(conn, store_path)

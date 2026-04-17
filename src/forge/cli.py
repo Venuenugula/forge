@@ -6,6 +6,7 @@ from .envs import create_env, parent_chain
 from .gc import gc_dry_run
 from .resolver import detect_mode, inspect_candidates, resolve_package
 from .pip_shim import install_local, install_to_store
+from .runtime import activation_exports
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -15,6 +16,9 @@ def build_parser() -> argparse.ArgumentParser:
     create_cmd = sub.add_parser("create", help="Create a Forge environment")
     create_cmd.add_argument("env", help="Environment name")
     create_cmd.add_argument("--parent", default=None, help="Parent environment")
+
+    activate_cmd = sub.add_parser("activate", help="Print shell exports for an environment")
+    activate_cmd.add_argument("env", help="Environment name")
 
     install_cmd = sub.add_parser("install", help="Install package with Forge local semantics")
     install_cmd.add_argument("pkg", help="Package spec, e.g. numpy==1.26.4")
@@ -53,6 +57,10 @@ def main() -> int:
     if args.command == "create":
         create_env(args.env, parent=args.parent)
         print(f"[envs] created env={args.env} parent={args.parent}")
+        return 0
+
+    if args.command == "activate":
+        print(activation_exports(args.env))
         return 0
 
     if args.command == "install":

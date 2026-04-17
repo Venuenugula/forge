@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import platform
 from pathlib import Path
 
 from .config import ensure_dirs, get_envs_dir
@@ -32,7 +33,7 @@ def create_env(name: str, parent: str | None = None, python_version: str | None 
     config = {
         "name": name,
         "parent": parent,
-        "python_version": python_version,
+        "python_version": python_version or platform.python_version(),
         "packages": {},
     }
     with get_env_config_path(name).open("w", encoding="utf-8") as f:

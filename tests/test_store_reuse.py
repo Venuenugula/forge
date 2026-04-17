@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from forge.config import ensure_dirs, get_db_path, get_store_dir
-from forge.envs import create_env, get_env_site_packages, load_env_config
+from forge.envs import create_env, get_env_site_packages, load_env_config, save_env_config
 from forge.fingerprint import generate_fingerprint, get_store_path
 from forge.metadata import (
     decrement_ref_count,
@@ -144,5 +144,37 @@ def test_install_local_updates_env_manifest(tmp_path, monkeypatch) -> None:
 
         cfg = load_env_config("ml_local")
         assert cfg["packages"]["numpy"] == "1.25.0"
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_install_to_store_raises_on_python_version_mismatch(tmp_path, monkeypatch) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        create_env("mismatch")
+        cfg = load_env_config("mismatch")
+        cfg["python_version"] = "3.11.0"
+        save_env_config("mismatch", cfg)
+
+        class DummyCompleted:
+            def __init__(self) -> None:
+                self.returncode = 0
+                self.stdout = "ok"
+                self.stderr = ""
+
+        def fake_run(cmd, check, capture_output, text):  # noqa: ANN001
+            target = Path(cmd[-1])
+            (target / "numpy").mkdir(parents=True, exist_ok=True)
+            return DummyCompleted()
+
+        monkeypatch.setattr("forge.pip_shim.subprocess.run", fake_run)
+
+        raised = False
+        try:
+            install_to_store("numpy==1.26.4", env_name="mismatch")
+        except RuntimeError as exc:
+            raised = True
+            assert "Python version mismatch" in str(exc)
+        assert raised
     finally:
         os.environ.pop("FORGE_HOME", None)
