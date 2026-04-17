@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from .config import get_store_dir
+from .envs import get_env_site_packages, list_env_names
+from .metadata import get_connection, init_db, list_packages
+
+
+def _dir_size_bytes(path: Path) -> int:
+    total = 0
+    if not path.exists():
+        return 0
+    for p in path.rglob("*"):
+        if p.is_file():
+            total += p.stat().st_size
+    return total
+
+
+def _used_store_roots() -> set[Path]:
+    used: set[Path] = set()
+    for env_name in list_env_names():
+        site = get_env_site_packages(env_name)
+        if not site.exists():
+            continue
+        for item in site.iterdir():
+            if not item.is_symlink():
+                continue
+            resolved = item.resolve()
+            # /.../store/<name>/<version>/<leaf>/<module_or_dist_info>
+            root = resolved.parent
+            if get_store_dir().resolve() in root.parents:
+                used.add(root)
+    return used
+
+
+def gc_dry_run() -> dict:
+    conn = get_connection()
+    try:
+        init_db(conn)
+        rows = list_packages(conn)
+    finally:
+        conn.close()
+
+    used_roots = _used_store_roots()
+    unused: list[dict] = []
+    reclaimable = 0
+    for row in rows:
+        path = Path(row["path"])
+        if path in used_roots:
+            continue
+        size = _dir_size_bytes(path)
+        reclaimable += size
+        unused.append(
+            {
+                "name": row["name"],
+                "version": row["version"],
+                "path": str(path),
+                "size_bytes": size,
+                "ref_count": row["ref_count"],
+            }
+        )
+
+    return {"unused": unused, "reclaimable_bytes": reclaimable}

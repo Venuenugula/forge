@@ -51,6 +51,30 @@ def load_env_config(name: str) -> dict:
         return json.load(f)
 
 
+def save_env_config(name: str, config: dict) -> None:
+    config_path = get_env_config_path(name)
+    with config_path.open("w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+
+
+def record_package(name: str, pkg_name: str, version: str) -> None:
+    config = load_env_config(name)
+    packages = config.setdefault("packages", {})
+    packages[pkg_name] = version
+    save_env_config(name, config)
+
+
+def list_env_names() -> list[str]:
+    ensure_dirs()
+    envs_dir = get_envs_dir()
+    names: list[str] = []
+    for entry in sorted(envs_dir.iterdir()):
+        if entry.is_dir() and (entry / "config.json").exists():
+            names.append(entry.name)
+    return names
+
+
 def parent_chain(name: str) -> list[str]:
     """Return parent-first chain (direct parent, grandparent, ...)."""
     chain: list[str] = []
