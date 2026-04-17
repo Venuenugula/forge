@@ -106,6 +106,24 @@ def get_package_by_path(conn: sqlite3.Connection, path: Path) -> sqlite3.Row | N
     return cursor.fetchone()
 
 
+def get_package_by_name_version(
+    conn: sqlite3.Connection,
+    name: str,
+    version: str,
+) -> sqlite3.Row | None:
+    cursor = conn.execute(
+        """
+        SELECT *
+        FROM packages
+        WHERE name = ? AND version = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (name, version),
+    )
+    return cursor.fetchone()
+
+
 def increment_ref_count(conn: sqlite3.Connection, path: Path) -> None:
     cursor = conn.execute(
         "UPDATE packages SET ref_count = ref_count + 1 WHERE path = ?",

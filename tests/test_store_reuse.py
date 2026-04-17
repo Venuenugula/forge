@@ -15,7 +15,7 @@ from forge.metadata import (
     list_packages,
     register_package,
 )
-from forge.pip_shim import install_local, install_to_store
+from forge.pip_shim import install_local, install_to_store, uninstall_local
 
 
 def test_fingerprint_and_store_path_are_deterministic(tmp_path) -> None:
@@ -176,5 +176,52 @@ def test_install_to_store_raises_on_python_version_mismatch(tmp_path, monkeypatc
             raised = True
             assert "Python version mismatch" in str(exc)
         assert raised
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_uninstall_local_removes_manifest_symlink_and_decrements_refcount(tmp_path, monkeypatch) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        create_env("ml_uninstall")
+
+        class DummyCompleted:
+            def __init__(self) -> None:
+                self.returncode = 0
+                self.stdout = "ok"
+                self.stderr = ""
+
+        def fake_run(cmd, check, capture_output, text):  # noqa: ANN001
+            target = Path(cmd[-1])
+            (target / "numpy").mkdir(parents=True, exist_ok=True)
+            (target / "numpy" / "__init__.py").write_text("__version__='1.26.4'\n", encoding="utf-8")
+            (target / "numpy-1.26.4.dist-info").mkdir(parents=True, exist_ok=True)
+            return DummyCompleted()
+
+        monkeypatch.setattr("forge.pip_shim.subprocess.run", fake_run)
+
+        store_path = install_local("numpy==1.26.4", "ml_uninstall")
+        cfg = load_env_config("ml_uninstall")
+        assert cfg["packages"]["numpy"] == "1.26.4"
+
+        env_site = get_env_site_packages("ml_uninstall")
+        assert (env_site / "numpy").is_symlink()
+
+        removed_path = uninstall_local("numpy", "ml_uninstall")
+        assert removed_path == store_path
+
+        cfg = load_env_config("ml_uninstall")
+        assert "numpy" not in cfg["packages"]
+        assert not (env_site / "numpy").exists()
+
+        conn = get_connection()
+        try:
+            init_db(conn)
+            fp = generate_fingerprint("numpy", "1.26.4")
+            row = get_package(conn, fp)
+            assert row is not None
+            assert row["ref_count"] == 0
+        finally:
+            conn.close()
     finally:
         os.environ.pop("FORGE_HOME", None)

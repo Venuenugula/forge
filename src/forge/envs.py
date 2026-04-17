@@ -66,6 +66,14 @@ def record_package(name: str, pkg_name: str, version: str) -> None:
     save_env_config(name, config)
 
 
+def remove_package(name: str, pkg_name: str) -> None:
+    config = load_env_config(name)
+    packages = config.setdefault("packages", {})
+    if pkg_name in packages:
+        del packages[pkg_name]
+    save_env_config(name, config)
+
+
 def list_env_names() -> list[str]:
     ensure_dirs()
     envs_dir = get_envs_dir()

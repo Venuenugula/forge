@@ -5,11 +5,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .envs import get_env_site_packages, load_env_config, record_package
+from .config import get_store_dir
+from .envs import get_env_site_packages, load_env_config, record_package, remove_package
 from .fingerprint import generate_fingerprint, get_store_path
 from .linker import link_store_into_env
 from .metadata import (
+    decrement_ref_count,
     get_connection,
+    get_package_by_name_version,
     increment_ref_count,
     init_db,
     register_package,
@@ -76,3 +79,35 @@ def install_local(pkg_spec: str, env_name: str) -> Path:
     name, version = parse_pkg_spec(pkg_spec)
     record_package(env_name, name, version)
     return path
+
+
+def uninstall_local(pkg_name: str, env_name: str) -> Path:
+    env_cfg = load_env_config(env_name)
+    packages = env_cfg.get("packages", {})
+    if pkg_name not in packages:
+        raise RuntimeError(f"Package '{pkg_name}' is not recorded as local in env '{env_name}'")
+    version = packages[pkg_name]
+
+    conn = get_connection()
+    try:
+        init_db(conn)
+        row = get_package_by_name_version(conn, pkg_name, version)
+        if row is None:
+            raise RuntimeError(f"No metadata row found for {pkg_name}=={version}")
+        store_path = Path(row["path"])
+
+        site = get_env_site_packages(env_name)
+        store_root = get_store_dir().resolve()
+        for entry in list(site.iterdir()):
+            if not entry.is_symlink():
+                continue
+            target = entry.resolve()
+            if store_root in target.parents and store_path in target.parents:
+                entry.unlink()
+
+        decrement_ref_count(conn, store_path)
+        remove_package(env_name, pkg_name)
+        generate_pth(env_name)
+        return store_path
+    finally:
+        conn.close()

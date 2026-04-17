@@ -6,7 +6,7 @@ import json
 from .envs import create_env, parent_chain
 from .gc import doctor_check, gc_apply, gc_dry_run
 from .resolver import detect_mode, inspect_candidates, resolve_package
-from .pip_shim import install_local, install_to_store
+from .pip_shim import install_local, install_to_store, uninstall_local
 from .runtime import activation_exports
 
 
@@ -25,6 +25,11 @@ def build_parser() -> argparse.ArgumentParser:
     install_cmd.add_argument("pkg", help="Package spec, e.g. numpy==1.26.4")
     install_cmd.add_argument("--env", required=True, help="Target environment")
     install_cmd.add_argument("--local", action="store_true", help="Install as local override")
+
+    uninstall_cmd = sub.add_parser("uninstall", help="Uninstall package from an environment")
+    uninstall_cmd.add_argument("pkg", help="Package import name, e.g. numpy")
+    uninstall_cmd.add_argument("--env", required=True, help="Target environment")
+    uninstall_cmd.add_argument("--local", action="store_true", help="Uninstall local override")
 
     inspect_cmd = sub.add_parser("inspect", help="Inspect package resolution")
     inspect_cmd.add_argument("pkg", help="Package import name, e.g. numpy")
@@ -75,6 +80,13 @@ def main() -> int:
             parser.error("MVP supports only --local for forge install")
         path = install_local(args.pkg, env_name=args.env)
         print(f"[install] local package={args.pkg} env={args.env} path={path}")
+        return 0
+
+    if args.command == "uninstall":
+        if not args.local:
+            parser.error("MVP supports only --local for forge uninstall")
+        path = uninstall_local(args.pkg, env_name=args.env)
+        print(f"[uninstall] local package={args.pkg} env={args.env} path={path}")
         return 0
 
     if args.command == "inspect":

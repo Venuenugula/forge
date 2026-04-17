@@ -5,6 +5,7 @@ import os
 import platform
 import sys
 import json
+from pathlib import Path
 from contextlib import redirect_stdout
 
 from forge.cli import main
@@ -132,5 +133,27 @@ def test_create_env_defaults_python_version(tmp_path) -> None:
         create_env("pyenv")
         cfg = load_env_config("pyenv")
         assert cfg["python_version"] == platform.python_version()
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_cli_uninstall_local_calls_backend(tmp_path, monkeypatch) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        create_env("x")
+        called = {"ok": False}
+
+        def fake_uninstall(pkg, env_name):  # noqa: ANN001
+            called["ok"] = pkg == "numpy" and env_name == "x"
+            return Path("/tmp/fake-store")
+
+        monkeypatch.setattr("forge.cli.uninstall_local", fake_uninstall)
+        monkeypatch.setattr(sys, "argv", ["forge", "uninstall", "numpy", "--env", "x", "--local"])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = main()
+        assert code == 0
+        assert called["ok"] is True
+        assert "[uninstall] local package=numpy env=x" in out.getvalue()
     finally:
         os.environ.pop("FORGE_HOME", None)
