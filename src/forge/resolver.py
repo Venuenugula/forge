@@ -38,6 +38,34 @@ def _global_versions(pkg_name: str) -> list[str]:
         conn.close()
 
 
+def inspect_candidates(pkg_name: str, env_name: str) -> dict:
+    local_path = get_env_site_packages(env_name) / pkg_name
+    local_entry = {
+        "exists": local_path.exists(),
+        "version": _package_version_from_site_path(local_path) if local_path.exists() else None,
+        "path": str(local_path),
+    }
+
+    parents: list[dict] = []
+    for parent in parent_chain(env_name):
+        candidate = get_env_site_packages(parent) / pkg_name
+        parents.append(
+            {
+                "env": parent,
+                "exists": candidate.exists(),
+                "version": _package_version_from_site_path(candidate) if candidate.exists() else None,
+                "path": str(candidate),
+            }
+        )
+
+    global_versions = _global_versions(pkg_name)
+    return {
+        "local": local_entry,
+        "parents": parents,
+        "global_versions": global_versions,
+    }
+
+
 def resolve_package(pkg_name: str, env_name: str, mode: str | None = None) -> dict:
     resolved_mode = mode or detect_mode()
     warnings: list[str] = []

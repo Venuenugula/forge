@@ -4,8 +4,8 @@ import argparse
 
 from .envs import create_env, parent_chain
 from .gc import gc_dry_run
-from .resolver import detect_mode, resolve_package
-from .pip_shim import install_to_store
+from .resolver import detect_mode, inspect_candidates, resolve_package
+from .pip_shim import install_local, install_to_store
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -15,6 +15,11 @@ def build_parser() -> argparse.ArgumentParser:
     create_cmd = sub.add_parser("create", help="Create a Forge environment")
     create_cmd.add_argument("env", help="Environment name")
     create_cmd.add_argument("--parent", default=None, help="Parent environment")
+
+    install_cmd = sub.add_parser("install", help="Install package with Forge local semantics")
+    install_cmd.add_argument("pkg", help="Package spec, e.g. numpy==1.26.4")
+    install_cmd.add_argument("--env", required=True, help="Target environment")
+    install_cmd.add_argument("--local", action="store_true", help="Install as local override")
 
     inspect_cmd = sub.add_parser("inspect", help="Inspect package resolution")
     inspect_cmd.add_argument("pkg", help="Package import name, e.g. numpy")
@@ -50,9 +55,25 @@ def main() -> int:
         print(f"[envs] created env={args.env} parent={args.parent}")
         return 0
 
+    if args.command == "install":
+        if not args.local:
+            parser.error("MVP supports only --local for forge install")
+        path = install_local(args.pkg, env_name=args.env)
+        print(f"[install] local package={args.pkg} env={args.env} path={path}")
+        return 0
+
     if args.command == "inspect":
+        candidates = inspect_candidates(args.pkg, args.env)
         result = resolve_package(args.pkg, args.env, mode=args.mode or detect_mode())
         print(f"[inspect] package={args.pkg} source={result['source']} version={result['version']}")
+        local = candidates["local"]
+        print(f"[candidate:local] exists={local['exists']} version={local['version']} path={local['path']}")
+        for parent in candidates["parents"]:
+            print(
+                f"[candidate:parent:{parent['env']}] exists={parent['exists']} "
+                f"version={parent['version']} path={parent['path']}"
+            )
+        print(f"[candidate:global] versions={candidates['global_versions']}")
         for warning in result["warnings"]:
             print(f"[warn] {warning}")
         return 0

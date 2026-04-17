@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from forge.config import ensure_dirs, get_db_path, get_store_dir
-from forge.envs import create_env, get_env_site_packages
+from forge.envs import create_env, get_env_site_packages, load_env_config
 from forge.fingerprint import generate_fingerprint, get_store_path
 from forge.metadata import (
     decrement_ref_count,
@@ -15,7 +15,7 @@ from forge.metadata import (
     list_packages,
     register_package,
 )
-from forge.pip_shim import install_to_store
+from forge.pip_shim import install_local, install_to_store
 
 
 def test_fingerprint_and_store_path_are_deterministic(tmp_path) -> None:
@@ -115,5 +115,34 @@ def test_install_to_store_and_link_into_env_updates_metadata(tmp_path, monkeypat
         assert row is not None
         assert row["ref_count"] == 1
         conn.close()
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_install_local_updates_env_manifest(tmp_path, monkeypatch) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        create_env("ml_local")
+
+        class DummyCompleted:
+            def __init__(self) -> None:
+                self.returncode = 0
+                self.stdout = "ok"
+                self.stderr = ""
+
+        def fake_run(cmd, check, capture_output, text):  # noqa: ANN001
+            target = Path(cmd[-1])
+            (target / "numpy").mkdir(parents=True, exist_ok=True)
+            (target / "numpy" / "__init__.py").write_text("__version__='1.25.0'\n", encoding="utf-8")
+            (target / "numpy-1.25.0.dist-info").mkdir(parents=True, exist_ok=True)
+            return DummyCompleted()
+
+        monkeypatch.setattr("forge.pip_shim.subprocess.run", fake_run)
+
+        path = install_local("numpy==1.25.0", "ml_local")
+        assert path.exists()
+
+        cfg = load_env_config("ml_local")
+        assert cfg["packages"]["numpy"] == "1.25.0"
     finally:
         os.environ.pop("FORGE_HOME", None)

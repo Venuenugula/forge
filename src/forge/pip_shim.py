@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .envs import get_env_site_packages
+from .envs import get_env_site_packages, record_package
 from .fingerprint import generate_fingerprint, get_store_path
 from .linker import link_store_into_env
 from .metadata import (
@@ -60,3 +60,10 @@ def install_to_store(
         conn.close()
 
     return store_path
+
+
+def install_local(pkg_spec: str, env_name: str) -> Path:
+    path = install_to_store(pkg_spec, env_name=env_name)
+    name, version = parse_pkg_spec(pkg_spec)
+    record_package(env_name, name, version)
+    return path
