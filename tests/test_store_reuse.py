@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from forge.config import ensure_dirs, get_db_path, get_store_dir
+from forge.envs import create_env, get_env_site_packages
 from forge.fingerprint import generate_fingerprint, get_store_path
 from forge.metadata import (
     decrement_ref_count,
@@ -13,6 +15,7 @@ from forge.metadata import (
     list_packages,
     register_package,
 )
+from forge.pip_shim import install_to_store
 
 
 def test_fingerprint_and_store_path_are_deterministic(tmp_path) -> None:
@@ -68,6 +71,49 @@ def test_metadata_register_dedup_and_refcount_lifecycle(tmp_path) -> None:
         assert row["ref_count"] == 0
 
         assert get_db_path().exists()
+        conn.close()
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_install_to_store_and_link_into_env_updates_metadata(tmp_path, monkeypatch) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        create_env("ml_base")
+
+        class DummyCompleted:
+            def __init__(self) -> None:
+                self.returncode = 0
+                self.stdout = "ok"
+                self.stderr = ""
+
+        def fake_run(cmd, check, capture_output, text):  # noqa: ANN001
+            target = Path(cmd[-1])
+            (target / "numpy").mkdir(parents=True, exist_ok=True)
+            (target / "numpy" / "__init__.py").write_text("__version__='1.26.4'\n", encoding="utf-8")
+            (target / "numpy-1.26.4.dist-info").mkdir(parents=True, exist_ok=True)
+            return DummyCompleted()
+
+        monkeypatch.setattr("forge.pip_shim.subprocess.run", fake_run)
+
+        store_path = install_to_store("numpy==1.26.4", env_name="ml_base")
+        env_site = get_env_site_packages("ml_base")
+
+        assert (store_path / "numpy").exists()
+        assert (env_site / "numpy").is_symlink()
+
+        pth_path = env_site / "forge_layers.pth"
+        assert pth_path.exists()
+        pth = pth_path.read_text(encoding="utf-8")
+        assert str(env_site) in pth
+        assert str(get_store_dir()) in pth
+
+        conn = get_connection()
+        init_db(conn)
+        fp = generate_fingerprint("numpy", "1.26.4")
+        row = get_package(conn, fp)
+        assert row is not None
+        assert row["ref_count"] == 1
         conn.close()
     finally:
         os.environ.pop("FORGE_HOME", None)

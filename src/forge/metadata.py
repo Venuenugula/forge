@@ -101,16 +101,23 @@ def list_packages(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return cursor.fetchall()
 
 
+def get_package_by_path(conn: sqlite3.Connection, path: Path) -> sqlite3.Row | None:
+    cursor = conn.execute("SELECT * FROM packages WHERE path = ? LIMIT 1", (str(path),))
+    return cursor.fetchone()
+
+
 def increment_ref_count(conn: sqlite3.Connection, path: Path) -> None:
-    conn.execute(
+    cursor = conn.execute(
         "UPDATE packages SET ref_count = ref_count + 1 WHERE path = ?",
         (str(path),),
     )
+    if cursor.rowcount == 0:
+        raise ValueError(f"Package metadata not found for path: {path}")
     conn.commit()
 
 
 def decrement_ref_count(conn: sqlite3.Connection, path: Path) -> None:
-    conn.execute(
+    cursor = conn.execute(
         """
         UPDATE packages
         SET ref_count = CASE WHEN ref_count > 0 THEN ref_count - 1 ELSE 0 END
@@ -118,4 +125,6 @@ def decrement_ref_count(conn: sqlite3.Connection, path: Path) -> None:
         """,
         (str(path),),
     )
+    if cursor.rowcount == 0:
+        raise ValueError(f"Package metadata not found for path: {path}")
     conn.commit()
