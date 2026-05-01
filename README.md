@@ -37,6 +37,11 @@ Do not build:
 forge/
   pyproject.toml
   README.md
+  docs/
+    release-checklist.md
+    release-notes-template.md
+  scripts/
+    smoke.sh
   src/forge/
     __init__.py
     cli.py
@@ -163,8 +168,65 @@ forge/
 - Completed MVP production hardening pass across CLI policy controls, doctor workflows, and env settings UX.
 - Refreshed operational documentation with newly available policy and safety controls.
 
+### Day 25
+- Added release documentation assets: a checklist and release notes template.
+- Defined explicit packaging/tagging/verification steps for predictable releases.
+
+### Day 26
+- Added `scripts/smoke.sh` for end-to-end CLI validation of create/activate/inspect/doctor/gc.
+- Included optional networked install/uninstall path via `FORGE_SMOKE_PKG` for deeper validation.
+
+### Day 27
+- Added first-time install guide and migration notes for users moving from plain `venv`/`pip`.
+- Updated operational docs to tie release workflow and smoke testing into a single pre-release path.
+
+## Installation (First Time)
+
+### Prerequisites
+- Python 3.10+
+- Linux/macOS with symlink support
+- `pip` available in the runtime interpreter
+
+### Local Dev Install
+```bash
+cd forge
+python -m pip install -e .
+forge --help
+```
+
+### Minimal Quick Start
+```bash
+forge create base
+forge create app --parent base
+forge env set app abi_policy warn_abi
+forge activate app
+forge inspect pip --env app --mode warn
+forge doctor
+forge gc --dry-run
+```
+
+## Migration Guide (From `venv` + `pip`)
+
+- **Create layered envs**: map shared/base dependencies into a parent env (for example `base`) and app-specific overrides into child envs.
+- **Install app-local overrides**: use `forge install <pkg>==<ver> --env <env> --local`.
+- **Use store-first installs**: prefer `forge pip install <pkg>==<ver> --env <env>` to populate shared store and link into env.
+- **Set policy defaults per env**: use `forge env set <env> abi_policy <strict_abi|warn_abi|allow_abi>`.
+- **Verify before cutover**: run `forge inspect`, `forge doctor`, and `forge gc --dry-run` during migration checks.
+
+## Release Workflow
+
+- Run tests: `pytest -q`
+- Run smoke validation: `bash scripts/smoke.sh`
+- Build distribution artifacts:
+  ```bash
+  python -m pip install build
+  python -m build
+  ```
+- Follow `docs/release-checklist.md` for version/tag/release steps.
+- Use `docs/release-notes-template.md` to draft release notes.
+
 ## Next Milestones
 
-- Add release packaging workflow (wheel build + version/tag checklist).
-- Add smoke test script for end-to-end CLI flows (`create/install/activate/inspect/doctor/gc`).
-- Add installation and migration guide for first-time Forge users.
+- Add compatibility matrix validation across multiple Python minor versions.
+- Add CI job to run smoke script on every release tag.
+- Add `forge --version` and changelog command integration.
