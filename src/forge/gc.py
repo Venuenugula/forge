@@ -133,3 +133,36 @@ def doctor_check() -> DoctorReport:
         envs_scanned=envs_scanned,
         symlinks_scanned=symlinks_scanned,
     )
+
+
+def doctor_fix() -> DoctorReport:
+    report = doctor_check()
+    if report.ok:
+        return report
+
+    fixed = 0
+    conn = get_connection()
+    try:
+        init_db(conn)
+        for issue in report.issues:
+            if issue.kind == "metadata_missing_path":
+                conn.execute("DELETE FROM packages WHERE path = ?", (issue.path,))
+                fixed += 1
+            elif issue.kind == "broken_symlink":
+                link_path = Path(issue.path)
+                if link_path.is_symlink():
+                    link_path.unlink()
+                    fixed += 1
+        conn.commit()
+    finally:
+        conn.close()
+
+    post = doctor_check()
+    return DoctorReport(
+        ok=post.ok,
+        issues=post.issues,
+        metadata_rows_scanned=post.metadata_rows_scanned,
+        envs_scanned=post.envs_scanned,
+        symlinks_scanned=post.symlinks_scanned,
+        fixed_issues=fixed,
+    )

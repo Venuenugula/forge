@@ -119,8 +119,20 @@ forge/
 - Added doctor summary counters (`metadata_rows_scanned`, `envs_scanned`, `symlinks_scanned`).
 - Enhanced doctor CLI output with scan summary metrics.
 
+### Day 14
+- Added explicit ABI policy handling on pip shim install path: `strict_abi`, `warn_abi`, `allow_abi`.
+- Kept reuse reporting structured via install report fields.
+
+### Day 15
+- Added CLI global output controls: `--quiet` and `--verbose`.
+- Exposed pip install ABI policy selection through CLI (`forge pip install --abi-policy`).
+
+### Day 16
+- Added `doctor --fix` safe auto-remediation for broken symlinks and stale metadata rows.
+- Extended doctor report model with `fixed_issues` for before/after remediation visibility.
+
 ## Next Milestones
 
-- Add explicit ABI policy configuration (`strict_abi`, `warn_abi`, `allow_abi`) as user-tunable mode.
-- Add per-command structured logging switches for CI (`--quiet`, `--verbose`).
-- Add optional doctor auto-fix mode with before/after summary report.
+- Add ABI policy defaults per environment in config (`config.json`) with override precedence rules.
+- Add command-level machine-friendly exit codes for CI policy enforcement.
+- Add dry-run preview for `doctor --fix` to show planned actions before mutation.

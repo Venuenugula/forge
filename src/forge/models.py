@@ -81,6 +81,7 @@ class DoctorReport:
     metadata_rows_scanned: int = 0
     envs_scanned: int = 0
     symlinks_scanned: int = 0
+    fixed_issues: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -89,6 +90,7 @@ class DoctorReport:
             "metadata_rows_scanned": self.metadata_rows_scanned,
             "envs_scanned": self.envs_scanned,
             "symlinks_scanned": self.symlinks_scanned,
+            "fixed_issues": self.fixed_issues,
         }
 
 

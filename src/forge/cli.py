@@ -4,14 +4,21 @@ import argparse
 import json
 
 from .envs import create_env, parent_chain
-from .gc import doctor_check, gc_apply, gc_dry_run
+from .gc import doctor_check, doctor_fix, gc_apply, gc_dry_run
 from .resolver import detect_mode, inspect_candidates, resolve_package
 from .pip_shim import install_local, install_to_store_with_report, uninstall_local
 from .runtime import activation_exports
 
 
+def _log(message: str, *, quiet: bool = False) -> None:
+    if not quiet:
+        print(message)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="forge")
+    parser.add_argument("--quiet", action="store_true", help="Minimize non-essential output")
+    parser.add_argument("--verbose", action="store_true", help="Include extra diagnostic output")
     sub = parser.add_subparsers(dest="command", required=True)
 
     create_cmd = sub.add_parser("create", help="Create a Forge environment")
@@ -51,6 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     gc_cmd.add_argument("--json", action="store_true", help="Print JSON output")
 
     doctor_cmd = sub.add_parser("doctor", help="Check metadata/filesystem consistency")
+    doctor_cmd.add_argument("--fix", action="store_true", help="Attempt to auto-fix safe issues")
     doctor_cmd.add_argument("--json", action="store_true", help="Print JSON output")
 
     pip_cmd = sub.add_parser("pip", help="Store-first pip wrapper")
@@ -58,6 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
     pip_install = pip_sub.add_parser("install", help="Install package to Forge store")
     pip_install.add_argument("pkg", help="Package spec, e.g. numpy==1.26.4")
     pip_install.add_argument("--env", default=None, help="Link package into environment")
+    pip_install.add_argument(
+        "--abi-policy",
+        choices=["strict_abi", "warn_abi", "allow_abi"],
+        default="warn_abi",
+        help="Control ABI-compatible reuse policy",
+    )
 
     return parser
 
@@ -68,25 +82,25 @@ def main() -> int:
 
     if args.command == "create":
         create_env(args.env, parent=args.parent)
-        print(f"[envs] created env={args.env} parent={args.parent}")
+        _log(f"[envs] created env={args.env} parent={args.parent}", quiet=args.quiet)
         return 0
 
     if args.command == "activate":
-        print(activation_exports(args.env))
+        _log(activation_exports(args.env), quiet=False)
         return 0
 
     if args.command == "install":
         if not args.local:
             parser.error("MVP supports only --local for forge install")
         path = install_local(args.pkg, env_name=args.env)
-        print(f"[install] local package={args.pkg} env={args.env} path={path}")
+        _log(f"[install] local package={args.pkg} env={args.env} path={path}", quiet=args.quiet)
         return 0
 
     if args.command == "uninstall":
         if not args.local:
             parser.error("MVP supports only --local for forge uninstall")
         path = uninstall_local(args.pkg, env_name=args.env)
-        print(f"[uninstall] local package={args.pkg} env={args.env} path={path}")
+        _log(f"[uninstall] local package={args.pkg} env={args.env} path={path}", quiet=args.quiet)
         return 0
 
     if args.command == "inspect":
@@ -101,26 +115,27 @@ def main() -> int:
             print(json.dumps(payload, indent=2, sort_keys=True))
             return 0
 
-        print(f"[inspect] package={args.pkg} source={result.source} version={result.version}")
+        _log(f"[inspect] package={args.pkg} source={result.source} version={result.version}", quiet=args.quiet)
         local = candidates.local
-        print(f"[candidate:local] exists={local.exists} version={local.version} path={local.path}")
+        _log(f"[candidate:local] exists={local.exists} version={local.version} path={local.path}", quiet=args.quiet)
         for parent in candidates.parents:
-            print(
+            _log(
                 f"[candidate:parent:{parent.env}] exists={parent.exists} "
-                f"version={parent.version} path={parent.path}"
+                f"version={parent.version} path={parent.path}",
+                quiet=args.quiet,
             )
-        print(f"[candidate:global] versions={candidates.global_versions}")
+        _log(f"[candidate:global] versions={candidates.global_versions}", quiet=args.quiet)
         if result.reason:
-            print(f"[explain] {result.reason}")
+            _log(f"[explain] {result.reason}", quiet=args.quiet)
         if result.shadowed_sources:
-            print(f"[shadowed] {', '.join(result.shadowed_sources)}")
+            _log(f"[shadowed] {', '.join(result.shadowed_sources)}", quiet=args.quiet)
         for warning in result.warnings:
-            print(f"[warn] {warning}")
+            _log(f"[warn] {warning}", quiet=args.quiet)
         return 0
 
     if args.command == "tree":
         chain = [args.env, *parent_chain(args.env)]
-        print("[tree] " + " -> ".join(chain))
+        _log("[tree] " + " -> ".join(chain), quiet=args.quiet)
         return 0
 
     if args.command == "gc":
@@ -131,47 +146,53 @@ def main() -> int:
             print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
             return 0
         if args.force:
-            print("Deleted:")
+            _log("Deleted:", quiet=args.quiet)
         else:
-            print("Unused:")
+            _log("Unused:", quiet=args.quiet)
         for row in result.unused:
             mib = row.size_bytes / (1024 * 1024)
-            print(f"- {row.name} {row.version} ({mib:.2f} MiB)")
+            _log(f"- {row.name} {row.version} ({mib:.2f} MiB)", quiet=args.quiet)
         total_mib = result.reclaimable_bytes / (1024 * 1024)
         label = "Total reclaimed" if args.force else "Total reclaimable"
-        print(f"{label}: {total_mib:.2f} MiB")
+        _log(f"{label}: {total_mib:.2f} MiB", quiet=args.quiet)
         return 0
 
     if args.command == "doctor":
-        report = doctor_check()
+        report = doctor_fix() if args.fix else doctor_check()
         if args.json:
             print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
             return 0
         if report.ok:
-            print("Doctor check: OK")
-            print(
+            _log("Doctor check: OK", quiet=args.quiet)
+            _log(
                 f"Scanned metadata={report.metadata_rows_scanned} "
-                f"envs={report.envs_scanned} symlinks={report.symlinks_scanned}"
+                f"envs={report.envs_scanned} symlinks={report.symlinks_scanned}",
+                quiet=args.quiet,
             )
             return 0
-        print("Doctor check: issues found")
+        _log("Doctor check: issues found", quiet=args.quiet)
         for issue in report.issues:
-            print(f"- [{issue.kind}] {issue.path} :: {issue.detail}")
-        print(
+            _log(f"- [{issue.kind}] {issue.path} :: {issue.detail}", quiet=args.quiet)
+        _log(
             f"Scanned metadata={report.metadata_rows_scanned} "
-            f"envs={report.envs_scanned} symlinks={report.symlinks_scanned}"
+            f"envs={report.envs_scanned} symlinks={report.symlinks_scanned}",
+            quiet=args.quiet,
         )
+        if report.fixed_issues:
+            _log(f"Fixed issues: {report.fixed_issues}", quiet=args.quiet)
         return 0
 
     if args.command == "pip" and args.pip_command == "install":
-        report = install_to_store_with_report(args.pkg, env_name=args.env)
-        print(f"[pip_shim] installed {args.pkg} -> {report.path}")
-        print(f"[reuse] reused={report.reused} kind={report.reuse_kind}")
+        report = install_to_store_with_report(args.pkg, env_name=args.env, abi_policy=args.abi_policy)
+        _log(f"[pip_shim] installed {args.pkg} -> {report.path}", quiet=args.quiet)
+        _log(f"[reuse] reused={report.reused} kind={report.reuse_kind}", quiet=args.quiet)
+        if args.verbose:
+            _log(f"[abi_policy] {args.abi_policy}", quiet=args.quiet)
         for warning in report.warnings:
-            print(f"[warn] {warning}")
+            _log(f"[warn] {warning}", quiet=args.quiet)
         if args.env:
-            print(f"[linker] linked into env={args.env}")
-            print(f"[runtime] updated forge_layers.pth for env={args.env}")
+            _log(f"[linker] linked into env={args.env}", quiet=args.quiet)
+            _log(f"[runtime] updated forge_layers.pth for env={args.env}", quiet=args.quiet)
         return 0
 
     parser.error("Unsupported command")

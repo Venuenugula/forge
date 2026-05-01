@@ -157,3 +157,35 @@ def test_cli_uninstall_local_calls_backend(tmp_path, monkeypatch) -> None:
         assert "[uninstall] local package=numpy env=x" in out.getvalue()
     finally:
         os.environ.pop("FORGE_HOME", None)
+
+
+def test_cli_pip_install_passes_abi_policy_and_verbose(monkeypatch) -> None:
+    class FakeReport:
+        path = "/tmp/store"
+        reused = True
+        reuse_kind = "exact"
+        warnings: list[str] = []
+
+    monkeypatch.setattr("forge.cli.install_to_store_with_report", lambda *a, **k: FakeReport())
+    monkeypatch.setattr(sys, "argv", ["forge", "--verbose", "pip", "install", "numpy==1.26.4", "--abi-policy", "allow_abi"])
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = main()
+    assert code == 0
+    text = out.getvalue()
+    assert "[abi_policy] allow_abi" in text
+
+
+def test_cli_quiet_suppresses_non_json_logs(tmp_path, monkeypatch) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        create_env("quietenv")
+        monkeypatch.setattr("forge.cli.install_local", lambda pkg, env_name: Path("/tmp/x"))
+        monkeypatch.setattr(sys, "argv", ["forge", "--quiet", "install", "numpy==1.0.0", "--env", "quietenv", "--local"])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = main()
+        assert code == 0
+        assert out.getvalue().strip() == ""
+    finally:
+        os.environ.pop("FORGE_HOME", None)

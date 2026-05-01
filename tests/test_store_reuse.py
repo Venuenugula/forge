@@ -5,7 +5,7 @@ from pathlib import Path
 
 from forge.config import ensure_dirs, get_db_path, get_store_dir
 from forge.envs import create_env, get_env_site_packages, load_env_config, save_env_config
-from forge.fingerprint import generate_fingerprint, get_store_path
+from forge.fingerprint import PackageFingerprint, generate_fingerprint, get_store_path
 from forge.metadata import (
     decrement_ref_count,
     get_connection,
@@ -15,7 +15,7 @@ from forge.metadata import (
     list_packages,
     register_package,
 )
-from forge.pip_shim import install_local, install_to_store, uninstall_local
+from forge.pip_shim import install_local, install_to_store, install_to_store_with_report, uninstall_local
 
 
 def test_fingerprint_and_store_path_are_deterministic(tmp_path) -> None:
@@ -252,6 +252,60 @@ def test_install_to_store_reuses_existing_exact_store_package(tmp_path, monkeypa
         second = install_to_store("numpy==1.26.4")
 
         assert first == second
+        assert calls["count"] == 1
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_install_to_store_with_report_respects_abi_policy(tmp_path, monkeypatch) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        calls = {"count": 0}
+
+        class DummyCompleted:
+            def __init__(self) -> None:
+                self.returncode = 0
+                self.stdout = "ok"
+                self.stderr = ""
+
+        def fake_run(cmd, check, capture_output, text):  # noqa: ANN001
+            calls["count"] += 1
+            target = Path(cmd[-1])
+            (target / "numpy").mkdir(parents=True, exist_ok=True)
+            (target / "numpy" / "__init__.py").write_text("__version__='1.26.4'\n", encoding="utf-8")
+            (target / "numpy-1.26.4.dist-info").mkdir(parents=True, exist_ok=True)
+            return DummyCompleted()
+
+        monkeypatch.setattr("forge.pip_shim.subprocess.run", fake_run)
+
+        fp = generate_fingerprint("numpy", "1.26.4")
+        compatible_fp = PackageFingerprint(
+            name=fp.name,
+            version=fp.version,
+            python_version="0.0.0",
+            python_tag=fp.python_tag,
+            abi_tag=fp.abi_tag,
+            platform=fp.platform,
+            accelerator=fp.accelerator,
+        )
+        compatible_path = get_store_path(compatible_fp)
+        compatible_path.mkdir(parents=True, exist_ok=True)
+        (compatible_path / "numpy").mkdir(parents=True, exist_ok=True)
+        (compatible_path / "numpy" / "__init__.py").write_text("__version__='1.26.4'\n", encoding="utf-8")
+
+        conn = get_connection()
+        try:
+            init_db(conn)
+            register_package(conn, compatible_fp, compatible_path)
+        finally:
+            conn.close()
+
+        warn_report = install_to_store_with_report("numpy==1.26.4", abi_policy="warn_abi")
+        strict_report = install_to_store_with_report("numpy==1.26.4", abi_policy="strict_abi")
+
+        assert warn_report.reused is True
+        assert warn_report.reuse_kind == "abi_compatible"
+        assert strict_report.reuse_kind in {"fresh", "exact"}
         assert calls["count"] == 1
     finally:
         os.environ.pop("FORGE_HOME", None)

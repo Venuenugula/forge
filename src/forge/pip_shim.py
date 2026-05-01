@@ -34,6 +34,7 @@ def install_to_store_with_report(
     pkg_spec: str,
     *,
     env_name: str | None = None,
+    abi_policy: str = "warn_abi",
 ) -> InstallReport:
     name, version = parse_pkg_spec(pkg_spec)
     fingerprint = generate_fingerprint(name, version)
@@ -52,14 +53,18 @@ def install_to_store_with_report(
             reuse_kind = "exact"
         else:
             compatible = find_abi_compatible_package(conn, fingerprint)
+            should_install = True
             if compatible and Path(compatible["path"]).exists() and any(Path(compatible["path"]).iterdir()):
-                store_path = Path(compatible["path"])
-                reused = True
-                reuse_kind = "abi_compatible"
-                warnings.append(
-                    f"ABI-compatible reuse for {name}=={version} from {store_path.name}"
-                )
-            else:
+                if abi_policy != "strict_abi":
+                    store_path = Path(compatible["path"])
+                    reused = True
+                    reuse_kind = "abi_compatible"
+                    should_install = False
+                    if abi_policy == "warn_abi":
+                        warnings.append(
+                            f"ABI-compatible reuse for {name}=={version} from {store_path.name}"
+                        )
+            if should_install:
                 store_path.mkdir(parents=True, exist_ok=True)
                 cmd = [sys.executable, "-m", "pip", "install", pkg_spec, "--target", str(store_path)]
                 completed = subprocess.run(cmd, check=False, capture_output=True, text=True)
@@ -97,8 +102,9 @@ def install_to_store(
     pkg_spec: str,
     *,
     env_name: str | None = None,
+    abi_policy: str = "warn_abi",
 ) -> Path:
-    report = install_to_store_with_report(pkg_spec, env_name=env_name)
+    report = install_to_store_with_report(pkg_spec, env_name=env_name, abi_policy=abi_policy)
     return Path(report.path)
 
 

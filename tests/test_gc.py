@@ -4,7 +4,7 @@ import os
 
 from forge.envs import create_env, get_env_site_packages
 from forge.fingerprint import generate_fingerprint, get_store_path
-from forge.gc import doctor_check, gc_apply, gc_dry_run
+from forge.gc import doctor_check, doctor_fix, gc_apply, gc_dry_run
 from forge.linker import link_store_into_env
 from forge.metadata import get_connection, init_db, list_packages, register_package
 
@@ -83,5 +83,27 @@ def test_doctor_reports_missing_metadata_and_broken_symlink(tmp_path) -> None:
         kinds = {issue.kind for issue in report.issues}
         assert "metadata_missing_path" in kinds
         assert "broken_symlink" in kinds
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_doctor_fix_removes_safe_issues(tmp_path) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        _seed_store_package("ghostfix", "1.0.0", size=8)
+        ghost_root = get_store_path(generate_fingerprint("ghostfix", "1.0.0"))
+        import shutil
+
+        shutil.rmtree(ghost_root)
+
+        create_env("mlfix")
+        broken_target = tmp_path / "missing_target_fix"
+        broken_link = get_env_site_packages("mlfix") / "broken_pkg_fix"
+        broken_link.symlink_to(broken_target)
+
+        fixed = doctor_fix()
+        assert fixed.fixed_issues >= 2
+        post = doctor_check()
+        assert post.ok is True
     finally:
         os.environ.pop("FORGE_HOME", None)
