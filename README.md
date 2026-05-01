@@ -36,11 +36,14 @@ Do not build:
 ```text
 forge/
   pyproject.toml
+  CHANGELOG.md
   README.md
   docs/
+    compatibility-matrix.json
     release-checklist.md
     release-notes-template.md
   scripts/
+    compat_matrix.py
     smoke.sh
   src/forge/
     __init__.py
@@ -180,6 +183,18 @@ forge/
 - Added first-time install guide and migration notes for users moving from plain `venv`/`pip`.
 - Updated operational docs to tie release workflow and smoke testing into a single pre-release path.
 
+### Day 28
+- Added `forge --version` output path backed by package version metadata.
+- Added `forge changelog` command with text and JSON output for release visibility.
+
+### Day 29
+- Added compatibility matrix definition (`docs/compatibility-matrix.json`) for supported Python minors.
+- Added `scripts/compat_matrix.py` to validate core checks across available Python minor interpreters.
+
+### Day 30
+- Expanded CLI test coverage for version and changelog command behavior.
+- Refined release/operations docs to include compatibility matrix validation workflow.
+
 ## Installation (First Time)
 
 ### Prerequisites
@@ -217,6 +232,10 @@ forge gc --dry-run
 
 - Run tests: `pytest -q`
 - Run smoke validation: `bash scripts/smoke.sh`
+- Run compatibility matrix validation:
+  ```bash
+  python scripts/compat_matrix.py
+  ```
 - Build distribution artifacts:
   ```bash
   python -m pip install build
@@ -227,6 +246,6 @@ forge gc --dry-run
 
 ## Next Milestones
 
-- Add compatibility matrix validation across multiple Python minor versions.
-- Add CI job to run smoke script on every release tag.
-- Add `forge --version` and changelog command integration.
+- Add CI job to run smoke and compatibility scripts on every release tag.
+- Add automatic changelog entry generation from merged commits.
+- Add signed artifact verification step in release checklist.

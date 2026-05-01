@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
+import sys
 
+from . import __version__
 from .envs import create_env, get_all_env_settings, parent_chain, set_env_setting
 from .gc import doctor_check, doctor_fix, gc_apply, gc_dry_run
 from .resolver import detect_mode, inspect_candidates, resolve_package
@@ -15,10 +18,35 @@ def _log(message: str, *, quiet: bool = False) -> None:
         print(message)
 
 
+def _load_changelog(limit: int | None = None) -> list[dict[str, str]]:
+    changelog_path = Path(__file__).resolve().parents[2] / "CHANGELOG.md"
+    if not changelog_path.exists():
+        return []
+
+    entries: list[dict[str, str]] = []
+    current_version: str | None = None
+    current_lines: list[str] = []
+    for line in changelog_path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            if current_version is not None:
+                entries.append({"version": current_version, "notes": "\n".join(current_lines).strip()})
+            current_version = line.replace("## ", "", 1).strip()
+            current_lines = []
+            continue
+        if current_version is not None:
+            current_lines.append(line)
+
+    if current_version is not None:
+        entries.append({"version": current_version, "notes": "\n".join(current_lines).strip()})
+
+    return entries[:limit] if limit is not None else entries
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="forge")
     parser.add_argument("--quiet", action="store_true", help="Minimize non-essential output")
     parser.add_argument("--verbose", action="store_true", help="Include extra diagnostic output")
+    parser.add_argument("--version", action="store_true", help="Print Forge version and exit")
     parser.add_argument(
         "--enforce",
         action="store_true",
@@ -84,6 +112,10 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_cmd.add_argument("--dry-run", action="store_true", help="Preview safe fixes without applying")
     doctor_cmd.add_argument("--json", action="store_true", help="Print JSON output")
 
+    changelog_cmd = sub.add_parser("changelog", help="Show changelog entries")
+    changelog_cmd.add_argument("--limit", type=int, default=5, help="Maximum number of versions to show")
+    changelog_cmd.add_argument("--json", action="store_true", help="Print JSON output")
+
     pip_cmd = sub.add_parser("pip", help="Store-first pip wrapper")
     pip_sub = pip_cmd.add_subparsers(dest="pip_command", required=True)
     pip_install = pip_sub.add_parser("install", help="Install package to Forge store")
@@ -100,8 +132,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    if len(sys.argv) == 2 and sys.argv[1] == "--version":
+        print(__version__)
+        return 0
+
     parser = build_parser()
     args = parser.parse_args()
+    if args.version:
+        print(__version__)
+        return 0
 
     if args.command == "create":
         create_env(args.env, parent=args.parent)
@@ -234,6 +273,20 @@ def main() -> int:
             _log(f"{label}: {report.fixed_issues}", quiet=args.quiet)
         if args.enforce and report.issues:
             return 30
+        return 0
+
+    if args.command == "changelog":
+        entries = _load_changelog(limit=args.limit)
+        if args.json:
+            print(json.dumps({"entries": entries}, indent=2, sort_keys=True))
+            return 0
+        if not entries:
+            _log("No changelog entries found.", quiet=args.quiet)
+            return 0
+        for entry in entries:
+            _log(f"## {entry['version']}", quiet=args.quiet)
+            if entry["notes"]:
+                _log(entry["notes"], quiet=args.quiet)
         return 0
 
     if args.command == "pip" and args.pip_command == "install":

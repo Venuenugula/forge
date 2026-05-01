@@ -287,3 +287,26 @@ def test_cli_doctor_fix_dry_run(monkeypatch) -> None:
         code = main()
     assert code == 0
     assert "Planned fixes: 1" in out.getvalue()
+
+
+def test_cli_version_flag(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["forge", "--version"])
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = main()
+    assert code == 0
+    assert out.getvalue().strip() == "0.1.0"
+
+
+def test_cli_changelog_json(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "forge.cli._load_changelog",
+        lambda limit=5: [{"version": "v0.1.0", "notes": "- init"}][:limit],
+    )
+    monkeypatch.setattr(sys, "argv", ["forge", "changelog", "--json", "--limit", "1"])
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = main()
+    payload = json.loads(out.getvalue())
+    assert code == 0
+    assert payload["entries"][0]["version"] == "v0.1.0"

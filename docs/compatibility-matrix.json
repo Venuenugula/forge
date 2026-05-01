@@ -1,0 +1,9 @@
+{
+  "python_minors": ["3.10", "3.11", "3.12"],
+  "core_checks": [
+    "tests/test_cli.py",
+    "tests/test_gc.py",
+    "tests/test_resolver.py",
+    "tests/test_store_reuse.py"
+  ]
+}
