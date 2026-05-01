@@ -135,10 +135,20 @@ def doctor_check() -> DoctorReport:
     )
 
 
-def doctor_fix() -> DoctorReport:
+def doctor_fix(*, dry_run: bool = False) -> DoctorReport:
     report = doctor_check()
     if report.ok:
         return report
+
+    if dry_run:
+        return DoctorReport(
+            ok=report.ok,
+            issues=report.issues,
+            metadata_rows_scanned=report.metadata_rows_scanned,
+            envs_scanned=report.envs_scanned,
+            symlinks_scanned=report.symlinks_scanned,
+            fixed_issues=len(report.issues),
+        )
 
     fixed = 0
     conn = get_connection()

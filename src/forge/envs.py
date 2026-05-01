@@ -93,6 +93,18 @@ def get_env_setting(name: str, key: str, default: str | None = None) -> str | No
     return settings.get(key, default)
 
 
+def set_env_setting(name: str, key: str, value: str) -> None:
+    config = load_env_config(name)
+    settings = config.setdefault("settings", {})
+    settings[key] = value
+    save_env_config(name, config)
+
+
+def get_all_env_settings(name: str) -> dict:
+    config = load_env_config(name)
+    return dict(config.get("settings", {}))
+
+
 def parent_chain(name: str) -> list[str]:
     """Return parent-first chain (direct parent, grandparent, ...)."""
     chain: list[str] = []

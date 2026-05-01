@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from .envs import create_env, parent_chain
+from .envs import create_env, get_all_env_settings, parent_chain, set_env_setting
 from .gc import doctor_check, doctor_fix, gc_apply, gc_dry_run
 from .resolver import detect_mode, inspect_candidates, resolve_package
 from .pip_shim import install_local, install_to_store_with_report, uninstall_local
@@ -24,6 +24,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Return non-zero on warnings/issues for CI policy checks",
     )
+    parser.add_argument(
+        "--enforce-profile",
+        choices=["warn", "strict"],
+        default="warn",
+        help="CI enforcement strictness profile",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     create_cmd = sub.add_parser("create", help="Create a Forge environment")
@@ -31,6 +37,17 @@ def build_parser() -> argparse.ArgumentParser:
     create_cmd.add_argument("--parent", default=None, help="Parent environment")
 
     activate_cmd = sub.add_parser("activate", help="Print shell exports for an environment")
+    env_cmd = sub.add_parser("env", help="Environment settings operations")
+    env_sub = env_cmd.add_subparsers(dest="env_command", required=True)
+    env_set = env_sub.add_parser("set", help="Set environment setting")
+    env_set.add_argument("env", help="Environment name")
+    env_set.add_argument("key", help="Setting key")
+    env_set.add_argument("value", help="Setting value")
+    env_get = env_sub.add_parser("get", help="Get environment setting")
+    env_get.add_argument("env", help="Environment name")
+    env_get.add_argument("key", nargs="?", default=None, help="Optional setting key")
+    env_get.add_argument("--json", action="store_true", help="Print JSON output")
+
     activate_cmd.add_argument("env", help="Environment name")
 
     install_cmd = sub.add_parser("install", help="Install package with Forge local semantics")
@@ -64,6 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor_cmd = sub.add_parser("doctor", help="Check metadata/filesystem consistency")
     doctor_cmd.add_argument("--fix", action="store_true", help="Attempt to auto-fix safe issues")
+    doctor_cmd.add_argument("--dry-run", action="store_true", help="Preview safe fixes without applying")
     doctor_cmd.add_argument("--json", action="store_true", help="Print JSON output")
 
     pip_cmd = sub.add_parser("pip", help="Store-first pip wrapper")
@@ -93,6 +111,28 @@ def main() -> int:
     if args.command == "activate":
         _log(activation_exports(args.env), quiet=False)
         return 0
+
+    if args.command == "env":
+        if args.env_command == "set":
+            set_env_setting(args.env, args.key, args.value)
+            _log(f"[env] set {args.key}={args.value} for {args.env}", quiet=args.quiet)
+            return 0
+        if args.env_command == "get":
+            if args.key is not None:
+                settings = get_all_env_settings(args.env)
+                value = settings.get(args.key)
+                if args.json:
+                    print(json.dumps({"env": args.env, "key": args.key, "value": value}, indent=2, sort_keys=True))
+                    return 0
+                _log(f"[env] {args.env}.{args.key}={value}", quiet=args.quiet)
+                return 0
+            settings = get_all_env_settings(args.env)
+            if args.json:
+                print(json.dumps({"env": args.env, "settings": settings}, indent=2, sort_keys=True))
+                return 0
+            for key, value in sorted(settings.items()):
+                _log(f"[env] {args.env}.{key}={value}", quiet=args.quiet)
+            return 0
 
     if args.command == "install":
         if not args.local:
@@ -138,6 +178,8 @@ def main() -> int:
             _log(f"[warn] {warning}", quiet=args.quiet)
         if args.enforce and result.warnings:
             return 20
+        if args.enforce and args.enforce_profile == "strict" and result.shadowed_sources:
+            return 22
         return 0
 
     if args.command == "tree":
@@ -165,7 +207,9 @@ def main() -> int:
         return 0
 
     if args.command == "doctor":
-        report = doctor_fix() if args.fix else doctor_check()
+        if args.dry_run and not args.fix:
+            parser.error("--dry-run requires --fix for doctor")
+        report = doctor_fix(dry_run=args.dry_run) if args.fix else doctor_check()
         if args.json:
             print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
             return 0
@@ -186,7 +230,8 @@ def main() -> int:
             quiet=args.quiet,
         )
         if report.fixed_issues:
-            _log(f"Fixed issues: {report.fixed_issues}", quiet=args.quiet)
+            label = "Planned fixes" if args.dry_run else "Fixed issues"
+            _log(f"{label}: {report.fixed_issues}", quiet=args.quiet)
         if args.enforce and report.issues:
             return 30
         return 0

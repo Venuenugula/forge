@@ -107,3 +107,27 @@ def test_doctor_fix_removes_safe_issues(tmp_path) -> None:
         assert post.ok is True
     finally:
         os.environ.pop("FORGE_HOME", None)
+
+
+def test_doctor_fix_dry_run_does_not_mutate(tmp_path) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        _seed_store_package("ghostdry", "1.0.0", size=8)
+        ghost_root = get_store_path(generate_fingerprint("ghostdry", "1.0.0"))
+        import shutil
+
+        shutil.rmtree(ghost_root)
+        create_env("mldry")
+        broken_target = tmp_path / "missing_target_dry"
+        broken_link = get_env_site_packages("mldry") / "broken_pkg_dry"
+        broken_link.symlink_to(broken_target)
+
+        preview = doctor_fix(dry_run=True)
+        assert preview.fixed_issues >= 2
+        assert broken_link.exists() is False
+        # Broken symlink should still be present in filesystem as link.
+        assert broken_link.is_symlink()
+        post = doctor_check()
+        assert post.ok is False
+    finally:
+        os.environ.pop("FORGE_HOME", None)

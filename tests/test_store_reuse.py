@@ -320,3 +320,57 @@ def test_new_env_has_default_abi_policy_setting(tmp_path) -> None:
         assert get_env_setting("policy_env", "abi_policy") == "warn_abi"
     finally:
         os.environ.pop("FORGE_HOME", None)
+
+
+def test_env_setting_controls_abi_policy_for_install(tmp_path, monkeypatch) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        create_env("policy_env")
+        cfg = load_env_config("policy_env")
+        cfg["settings"]["abi_policy"] = "strict_abi"
+        save_env_config("policy_env", cfg)
+
+        calls = {"count": 0}
+
+        class DummyCompleted:
+            def __init__(self) -> None:
+                self.returncode = 0
+                self.stdout = "ok"
+                self.stderr = ""
+
+        def fake_run(cmd, check, capture_output, text):  # noqa: ANN001
+            calls["count"] += 1
+            target = Path(cmd[-1])
+            (target / "numpy").mkdir(parents=True, exist_ok=True)
+            (target / "numpy" / "__init__.py").write_text("__version__='1.26.4'\n", encoding="utf-8")
+            return DummyCompleted()
+
+        monkeypatch.setattr("forge.pip_shim.subprocess.run", fake_run)
+
+        # Seed ABI-compatible but not exact entry.
+        fp = generate_fingerprint("numpy", "1.26.4")
+        compatible_fp = PackageFingerprint(
+            name=fp.name,
+            version=fp.version,
+            python_version="0.0.0",
+            python_tag=fp.python_tag,
+            abi_tag=fp.abi_tag,
+            platform=fp.platform,
+            accelerator=fp.accelerator,
+        )
+        compatible_path = get_store_path(compatible_fp)
+        compatible_path.mkdir(parents=True, exist_ok=True)
+        (compatible_path / "numpy").mkdir(parents=True, exist_ok=True)
+        (compatible_path / "numpy" / "__init__.py").write_text("__version__='1.26.4'\n", encoding="utf-8")
+        conn = get_connection()
+        try:
+            init_db(conn)
+            register_package(conn, compatible_fp, compatible_path)
+        finally:
+            conn.close()
+
+        report = install_to_store_with_report("numpy==1.26.4", env_name="policy_env")
+        assert report.reuse_kind in {"fresh", "exact"}
+        assert calls["count"] == 1
+    finally:
+        os.environ.pop("FORGE_HOME", None)

@@ -139,8 +139,32 @@ forge/
 - Added CI-oriented enforcement mode (`--enforce`) for non-zero exits on policy violations.
 - Added command-specific enforcement exit codes for pip warnings and doctor issues.
 
+### Day 19
+- Added `forge env set` and `forge env get` commands to manage per-environment settings.
+- Added JSON-capable output for environment settings retrieval for automation.
+
+### Day 20
+- Added `forge doctor --fix --dry-run` planning mode to preview safe fixes before mutation.
+- Kept doctor fix reporting structured with planned/applied fix counts.
+
+### Day 21
+- Added CI enforcement profile control via `--enforce-profile {warn,strict}`.
+- Added strict-mode inspect enforcement for dependency shadowing risk signals.
+
+### Day 22
+- Extended test coverage for env settings CLI paths and strict inspect enforcement behavior.
+- Added regression coverage for doctor dry-run preview semantics.
+
+### Day 23
+- Wired env-configured ABI policy into install behavior validation to ensure policy compliance.
+- Added test coverage proving env-level ABI policy affects pip shim install decisions.
+
+### Day 24
+- Completed MVP production hardening pass across CLI policy controls, doctor workflows, and env settings UX.
+- Refreshed operational documentation with newly available policy and safety controls.
+
 ## Next Milestones
 
-- Add dry-run preview for `doctor --fix` to show planned actions before mutation.
-- Add policy-driven enforcement for inspect warnings in strict CI profiles.
-- Add environment settings command (`forge env set/get`) for modifying per-env policy defaults.
+- Add release packaging workflow (wheel build + version/tag checklist).
+- Add smoke test script for end-to-end CLI flows (`create/install/activate/inspect/doctor/gc`).
+- Add installation and migration guide for first-time Forge users.

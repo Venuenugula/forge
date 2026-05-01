@@ -216,3 +216,74 @@ def test_cli_enforce_returns_nonzero_on_doctor_issues(monkeypatch) -> None:
     with redirect_stdout(out):
         code = main()
     assert code == 30
+
+
+def test_cli_enforce_strict_returns_nonzero_on_shadowing(tmp_path, monkeypatch) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        create_env("base")
+        create_env("child", parent="base")
+        monkeypatch.setattr(
+            "forge.cli.inspect_candidates",
+            lambda pkg, env: InspectCandidates(
+                local=CandidateEntry(exists=True, version="1.0", path="/tmp/local"),
+                parents=[CandidateEntry(env="base", exists=True, version="2.0", path="/tmp/base")],
+                global_versions=["2.0"],
+            ),
+        )
+        monkeypatch.setattr(
+            "forge.cli.resolve_package",
+            lambda pkg, env, mode=None: ResolveResult(
+                source="local",
+                version="1.0",
+                warnings=[],
+                reason="local wins",
+                shadowed_sources=["parent:base", "global"],
+            ),
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["forge", "--enforce", "--enforce-profile", "strict", "inspect", "numpy", "--env", "child"],
+        )
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = main()
+        assert code == 22
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_cli_env_set_and_get_json(tmp_path, monkeypatch) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        create_env("cfg")
+        monkeypatch.setattr(sys, "argv", ["forge", "env", "set", "cfg", "abi_policy", "allow_abi"])
+        with redirect_stdout(io.StringIO()):
+            assert main() == 0
+
+        out = io.StringIO()
+        monkeypatch.setattr(sys, "argv", ["forge", "env", "get", "cfg", "--json"])
+        with redirect_stdout(out):
+            assert main() == 0
+        payload = json.loads(out.getvalue())
+        assert payload["settings"]["abi_policy"] == "allow_abi"
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_cli_doctor_fix_dry_run(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "forge.cli.doctor_fix",
+        lambda dry_run=False: DoctorReport(
+            ok=False,
+            issues=[DoctorIssue(kind="broken_symlink", path="/tmp/x", detail="bad")],
+            fixed_issues=1,
+        ),
+    )
+    out = io.StringIO()
+    monkeypatch.setattr(sys, "argv", ["forge", "doctor", "--fix", "--dry-run"])
+    with redirect_stdout(out):
+        code = main()
+    assert code == 0
+    assert "Planned fixes: 1" in out.getvalue()
