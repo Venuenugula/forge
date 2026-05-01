@@ -11,6 +11,7 @@ from .fingerprint import generate_fingerprint, get_store_path
 from .linker import link_store_into_env
 from .metadata import (
     decrement_ref_count,
+    find_abi_compatible_package,
     get_connection,
     get_package,
     get_package_by_name_version,
@@ -18,6 +19,7 @@ from .metadata import (
     init_db,
     register_package,
 )
+from .models import InstallReport
 from .runtime import generate_pth
 
 
@@ -28,14 +30,17 @@ def parse_pkg_spec(pkg_spec: str) -> tuple[str, str]:
     return pkg_spec.strip(), "latest"
 
 
-def install_to_store(
+def install_to_store_with_report(
     pkg_spec: str,
     *,
     env_name: str | None = None,
-) -> Path:
+) -> InstallReport:
     name, version = parse_pkg_spec(pkg_spec)
     fingerprint = generate_fingerprint(name, version)
     store_path = get_store_path(fingerprint)
+    warnings: list[str] = []
+    reused = False
+    reuse_kind = "fresh"
 
     conn = get_connection()
     try:
@@ -43,20 +48,31 @@ def install_to_store(
         existing = get_package(conn, fingerprint)
         if existing and Path(existing["path"]).exists() and any(Path(existing["path"]).iterdir()):
             store_path = Path(existing["path"])
+            reused = True
+            reuse_kind = "exact"
         else:
-            store_path.mkdir(parents=True, exist_ok=True)
-            cmd = [sys.executable, "-m", "pip", "install", pkg_spec, "--target", str(store_path)]
-            completed = subprocess.run(cmd, check=False, capture_output=True, text=True)
-            if completed.returncode != 0:
-                raise RuntimeError(
-                    "pip install failed\n"
-                    f"command: {' '.join(cmd)}\n"
-                    f"stdout:\n{completed.stdout}\n"
-                    f"stderr:\n{completed.stderr}"
+            compatible = find_abi_compatible_package(conn, fingerprint)
+            if compatible and Path(compatible["path"]).exists() and any(Path(compatible["path"]).iterdir()):
+                store_path = Path(compatible["path"])
+                reused = True
+                reuse_kind = "abi_compatible"
+                warnings.append(
+                    f"ABI-compatible reuse for {name}=={version} from {store_path.name}"
                 )
-            if not any(store_path.iterdir()):
-                raise RuntimeError(f"pip install produced no files at: {store_path}")
-            register_package(conn, fingerprint, store_path)
+            else:
+                store_path.mkdir(parents=True, exist_ok=True)
+                cmd = [sys.executable, "-m", "pip", "install", pkg_spec, "--target", str(store_path)]
+                completed = subprocess.run(cmd, check=False, capture_output=True, text=True)
+                if completed.returncode != 0:
+                    raise RuntimeError(
+                        "pip install failed\n"
+                        f"command: {' '.join(cmd)}\n"
+                        f"stdout:\n{completed.stdout}\n"
+                        f"stderr:\n{completed.stderr}"
+                    )
+                if not any(store_path.iterdir()):
+                    raise RuntimeError(f"pip install produced no files at: {store_path}")
+                register_package(conn, fingerprint, store_path)
 
         if env_name:
             env_cfg = load_env_config(env_name)
@@ -74,7 +90,16 @@ def install_to_store(
     finally:
         conn.close()
 
-    return store_path
+    return InstallReport(path=str(store_path), reused=reused, reuse_kind=reuse_kind, warnings=warnings)
+
+
+def install_to_store(
+    pkg_spec: str,
+    *,
+    env_name: str | None = None,
+) -> Path:
+    report = install_to_store_with_report(pkg_spec, env_name=env_name)
+    return Path(report.path)
 
 
 def install_local(pkg_spec: str, env_name: str) -> Path:

@@ -103,12 +103,24 @@ forge/
 - Added `forge uninstall <pkg> --env <env> --local`.
 - Implemented symlink cleanup + manifest cleanup + ref_count decrement behavior.
 
-### Day 10 (Current Slice)
+### Day 10
 - Added exact store package reuse in `forge pip install` path to skip redundant reinstalls.
 - Added test coverage verifying second identical install reuses cached store content.
 
+### Day 11
+- Added installer reuse reporting (`reused`, `reuse_kind`, warnings) and CLI visibility.
+- Added ABI-compatible reuse fallback logic in installer metadata lookup path.
+
+### Day 12
+- Added resolver explainability fields (`reason`, `shadowed_sources`) for inspect output.
+- Enhanced human-readable inspect output with resolution rationale.
+
+### Day 13
+- Added doctor summary counters (`metadata_rows_scanned`, `envs_scanned`, `symlinks_scanned`).
+- Enhanced doctor CLI output with scan summary metrics.
+
 ## Next Milestones
 
-- Add ABI-compatible reuse policy and warnings (`reuse + warn`) instead of exact-only behavior.
-- Add `inspect` output for shadowing rationale (why selected layer won).
-- Harden GC/doctor with optional auto-fix suggestions and richer summary stats.
+- Add explicit ABI policy configuration (`strict_abi`, `warn_abi`, `allow_abi`) as user-tunable mode.
+- Add per-command structured logging switches for CI (`--quiet`, `--verbose`).
+- Add optional doctor auto-fix mode with before/after summary report.

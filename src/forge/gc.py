@@ -87,6 +87,9 @@ def gc_apply(force: bool = False) -> GCReport:
 
 def doctor_check() -> DoctorReport:
     issues: list[DoctorIssue] = []
+    metadata_rows_scanned = 0
+    envs_scanned = 0
+    symlinks_scanned = 0
 
     conn = get_connection()
     try:
@@ -96,6 +99,7 @@ def doctor_check() -> DoctorReport:
         conn.close()
 
     for row in rows:
+        metadata_rows_scanned += 1
         pkg_path = Path(row["path"])
         if not pkg_path.exists():
             issues.append(
@@ -107,10 +111,12 @@ def doctor_check() -> DoctorReport:
             )
 
     for env_name in list_env_names():
+        envs_scanned += 1
         site = get_env_site_packages(env_name)
         if not site.exists():
             continue
         for entry in site.iterdir():
+            symlinks_scanned += 1
             if entry.is_symlink() and not entry.resolve().exists():
                 issues.append(
                     DoctorIssue(
@@ -120,4 +126,10 @@ def doctor_check() -> DoctorReport:
                     )
                 )
 
-    return DoctorReport(ok=len(issues) == 0, issues=issues)
+    return DoctorReport(
+        ok=len(issues) == 0,
+        issues=issues,
+        metadata_rows_scanned=metadata_rows_scanned,
+        envs_scanned=envs_scanned,
+        symlinks_scanned=symlinks_scanned,
+    )

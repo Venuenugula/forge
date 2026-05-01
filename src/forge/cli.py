@@ -6,7 +6,7 @@ import json
 from .envs import create_env, parent_chain
 from .gc import doctor_check, gc_apply, gc_dry_run
 from .resolver import detect_mode, inspect_candidates, resolve_package
-from .pip_shim import install_local, install_to_store, uninstall_local
+from .pip_shim import install_local, install_to_store_with_report, uninstall_local
 from .runtime import activation_exports
 
 
@@ -110,6 +110,10 @@ def main() -> int:
                 f"version={parent.version} path={parent.path}"
             )
         print(f"[candidate:global] versions={candidates.global_versions}")
+        if result.reason:
+            print(f"[explain] {result.reason}")
+        if result.shadowed_sources:
+            print(f"[shadowed] {', '.join(result.shadowed_sources)}")
         for warning in result.warnings:
             print(f"[warn] {warning}")
         return 0
@@ -145,15 +149,26 @@ def main() -> int:
             return 0
         if report.ok:
             print("Doctor check: OK")
+            print(
+                f"Scanned metadata={report.metadata_rows_scanned} "
+                f"envs={report.envs_scanned} symlinks={report.symlinks_scanned}"
+            )
             return 0
         print("Doctor check: issues found")
         for issue in report.issues:
             print(f"- [{issue.kind}] {issue.path} :: {issue.detail}")
+        print(
+            f"Scanned metadata={report.metadata_rows_scanned} "
+            f"envs={report.envs_scanned} symlinks={report.symlinks_scanned}"
+        )
         return 0
 
     if args.command == "pip" and args.pip_command == "install":
-        path = install_to_store(args.pkg, env_name=args.env)
-        print(f"[pip_shim] installed {args.pkg} -> {path}")
+        report = install_to_store_with_report(args.pkg, env_name=args.env)
+        print(f"[pip_shim] installed {args.pkg} -> {report.path}")
+        print(f"[reuse] reused={report.reused} kind={report.reuse_kind}")
+        for warning in report.warnings:
+            print(f"[warn] {warning}")
         if args.env:
             print(f"[linker] linked into env={args.env}")
             print(f"[runtime] updated forge_layers.pth for env={args.env}")

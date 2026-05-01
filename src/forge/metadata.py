@@ -124,6 +124,33 @@ def get_package_by_name_version(
     return cursor.fetchone()
 
 
+def find_abi_compatible_package(
+    conn: sqlite3.Connection,
+    fingerprint: PackageFingerprint,
+) -> sqlite3.Row | None:
+    cursor = conn.execute(
+        """
+        SELECT *
+        FROM packages
+        WHERE name = ?
+          AND version = ?
+          AND python_tag = ?
+          AND platform = ?
+          AND accelerator = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (
+            fingerprint.name,
+            fingerprint.version,
+            fingerprint.python_tag,
+            fingerprint.platform,
+            fingerprint.accelerator,
+        ),
+    )
+    return cursor.fetchone()
+
+
 def increment_ref_count(conn: sqlite3.Connection, path: Path) -> None:
     cursor = conn.execute(
         "UPDATE packages SET ref_count = ref_count + 1 WHERE path = ?",

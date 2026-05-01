@@ -82,6 +82,11 @@ def resolve_package(pkg_name: str, env_name: str, mode: str | None = None) -> Re
     global_version = global_versions[-1] if global_versions else None
 
     if local_exists:
+        shadowed: list[str] = []
+        if parent_found:
+            shadowed.append(f"parent:{parent_found[0]}")
+        if global_version:
+            shadowed.append("global")
         if parent_found and parent_found[1] and local_version and parent_found[1] != local_version:
             msg = (
                 f"{pkg_name} downgraded: {parent_found[1]} (parent:{parent_found[0]}) "
@@ -91,12 +96,31 @@ def resolve_package(pkg_name: str, env_name: str, mode: str | None = None) -> Re
                 raise RuntimeError(msg)
             if resolved_mode == "warn":
                 warnings.append(msg)
-        return ResolveResult(source="local", version=local_version, warnings=warnings)
+        return ResolveResult(
+            source="local",
+            version=local_version,
+            warnings=warnings,
+            reason="local package exists and has highest precedence",
+            shadowed_sources=shadowed,
+        )
 
     if parent_found:
-        return ResolveResult(source=f"parent:{parent_found[0]}", version=parent_found[1], warnings=warnings)
+        shadowed = ["global"] if global_version else []
+        return ResolveResult(
+            source=f"parent:{parent_found[0]}",
+            version=parent_found[1],
+            warnings=warnings,
+            reason="first parent in chain containing package",
+            shadowed_sources=shadowed,
+        )
 
     if global_version:
-        return ResolveResult(source="global", version=global_version, warnings=warnings)
+        return ResolveResult(
+            source="global",
+            version=global_version,
+            warnings=warnings,
+            reason="not found in local or parent layers",
+            shadowed_sources=[],
+        )
 
     raise RuntimeError(f"Package not found in local/parent/global layers: {pkg_name}")

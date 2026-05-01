@@ -33,6 +33,8 @@ class ResolveResult:
     source: str
     version: str | None
     warnings: list[str]
+    reason: str | None = None
+    shadowed_sources: list[str] | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -76,6 +78,26 @@ class DoctorIssue:
 class DoctorReport:
     ok: bool
     issues: list[DoctorIssue]
+    metadata_rows_scanned: int = 0
+    envs_scanned: int = 0
+    symlinks_scanned: int = 0
 
     def to_dict(self) -> dict:
-        return {"ok": self.ok, "issues": [i.to_dict() for i in self.issues]}
+        return {
+            "ok": self.ok,
+            "issues": [i.to_dict() for i in self.issues],
+            "metadata_rows_scanned": self.metadata_rows_scanned,
+            "envs_scanned": self.envs_scanned,
+            "symlinks_scanned": self.symlinks_scanned,
+        }
+
+
+@dataclass(frozen=True)
+class InstallReport:
+    path: str
+    reused: bool
+    reuse_kind: str
+    warnings: list[str]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
