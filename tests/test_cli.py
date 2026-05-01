@@ -189,3 +189,30 @@ def test_cli_quiet_suppresses_non_json_logs(tmp_path, monkeypatch) -> None:
         assert out.getvalue().strip() == ""
     finally:
         os.environ.pop("FORGE_HOME", None)
+
+
+def test_cli_enforce_returns_nonzero_on_pip_warnings(monkeypatch) -> None:
+    class FakeReport:
+        path = "/tmp/store"
+        reused = True
+        reuse_kind = "abi_compatible"
+        warnings = ["abi warning"]
+
+    monkeypatch.setattr("forge.cli.install_to_store_with_report", lambda *a, **k: FakeReport())
+    monkeypatch.setattr(sys, "argv", ["forge", "--enforce", "pip", "install", "numpy==1.26.4"])
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = main()
+    assert code == 10
+
+
+def test_cli_enforce_returns_nonzero_on_doctor_issues(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "forge.cli.doctor_check",
+        lambda: DoctorReport(ok=False, issues=[DoctorIssue(kind="broken_symlink", path="/tmp/x", detail="bad")]),
+    )
+    monkeypatch.setattr(sys, "argv", ["forge", "--enforce", "doctor"])
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = main()
+    assert code == 30

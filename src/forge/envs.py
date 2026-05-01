@@ -35,6 +35,9 @@ def create_env(name: str, parent: str | None = None, python_version: str | None 
         "parent": parent,
         "python_version": python_version or platform.python_version(),
         "packages": {},
+        "settings": {
+            "abi_policy": "warn_abi",
+        },
     }
     with get_env_config_path(name).open("w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
@@ -82,6 +85,12 @@ def list_env_names() -> list[str]:
         if entry.is_dir() and (entry / "config.json").exists():
             names.append(entry.name)
     return names
+
+
+def get_env_setting(name: str, key: str, default: str | None = None) -> str | None:
+    config = load_env_config(name)
+    settings = config.get("settings", {})
+    return settings.get(key, default)
 
 
 def parent_chain(name: str) -> list[str]:

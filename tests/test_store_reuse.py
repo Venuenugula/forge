@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from forge.config import ensure_dirs, get_db_path, get_store_dir
-from forge.envs import create_env, get_env_site_packages, load_env_config, save_env_config
+from forge.envs import create_env, get_env_site_packages, get_env_setting, load_env_config, save_env_config
 from forge.fingerprint import PackageFingerprint, generate_fingerprint, get_store_path
 from forge.metadata import (
     decrement_ref_count,
@@ -307,5 +307,16 @@ def test_install_to_store_with_report_respects_abi_policy(tmp_path, monkeypatch)
         assert warn_report.reuse_kind == "abi_compatible"
         assert strict_report.reuse_kind in {"fresh", "exact"}
         assert calls["count"] == 1
+    finally:
+        os.environ.pop("FORGE_HOME", None)
+
+
+def test_new_env_has_default_abi_policy_setting(tmp_path) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        create_env("policy_env")
+        cfg = load_env_config("policy_env")
+        assert cfg["settings"]["abi_policy"] == "warn_abi"
+        assert get_env_setting("policy_env", "abi_policy") == "warn_abi"
     finally:
         os.environ.pop("FORGE_HOME", None)

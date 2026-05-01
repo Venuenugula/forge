@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from .config import get_store_dir
-from .envs import get_env_site_packages, load_env_config, record_package, remove_package
+from .envs import get_env_setting, get_env_site_packages, load_env_config, record_package, remove_package
 from .fingerprint import generate_fingerprint, get_store_path
 from .linker import link_store_into_env
 from .metadata import (
@@ -37,6 +37,8 @@ def install_to_store_with_report(
     abi_policy: str = "warn_abi",
 ) -> InstallReport:
     name, version = parse_pkg_spec(pkg_spec)
+    if env_name:
+        abi_policy = get_env_setting(env_name, "abi_policy", abi_policy) or abi_policy
     fingerprint = generate_fingerprint(name, version)
     store_path = get_store_path(fingerprint)
     warnings: list[str] = []

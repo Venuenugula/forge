@@ -131,8 +131,16 @@ forge/
 - Added `doctor --fix` safe auto-remediation for broken symlinks and stale metadata rows.
 - Extended doctor report model with `fixed_issues` for before/after remediation visibility.
 
+### Day 17
+- Added per-environment default settings in `config.json`, including default `abi_policy`.
+- Installer now resolves ABI policy from env settings when an environment is targeted.
+
+### Day 18
+- Added CI-oriented enforcement mode (`--enforce`) for non-zero exits on policy violations.
+- Added command-specific enforcement exit codes for pip warnings and doctor issues.
+
 ## Next Milestones
 
-- Add ABI policy defaults per environment in config (`config.json`) with override precedence rules.
-- Add command-level machine-friendly exit codes for CI policy enforcement.
 - Add dry-run preview for `doctor --fix` to show planned actions before mutation.
+- Add policy-driven enforcement for inspect warnings in strict CI profiles.
+- Add environment settings command (`forge env set/get`) for modifying per-env policy defaults.

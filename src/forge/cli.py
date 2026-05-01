@@ -19,6 +19,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="forge")
     parser.add_argument("--quiet", action="store_true", help="Minimize non-essential output")
     parser.add_argument("--verbose", action="store_true", help="Include extra diagnostic output")
+    parser.add_argument(
+        "--enforce",
+        action="store_true",
+        help="Return non-zero on warnings/issues for CI policy checks",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     create_cmd = sub.add_parser("create", help="Create a Forge environment")
@@ -131,6 +136,8 @@ def main() -> int:
             _log(f"[shadowed] {', '.join(result.shadowed_sources)}", quiet=args.quiet)
         for warning in result.warnings:
             _log(f"[warn] {warning}", quiet=args.quiet)
+        if args.enforce and result.warnings:
+            return 20
         return 0
 
     if args.command == "tree":
@@ -180,6 +187,8 @@ def main() -> int:
         )
         if report.fixed_issues:
             _log(f"Fixed issues: {report.fixed_issues}", quiet=args.quiet)
+        if args.enforce and report.issues:
+            return 30
         return 0
 
     if args.command == "pip" and args.pip_command == "install":
@@ -193,6 +202,8 @@ def main() -> int:
         if args.env:
             _log(f"[linker] linked into env={args.env}", quiet=args.quiet)
             _log(f"[runtime] updated forge_layers.pth for env={args.env}", quiet=args.quiet)
+        if args.enforce and report.warnings:
+            return 10
         return 0
 
     parser.error("Unsupported command")
