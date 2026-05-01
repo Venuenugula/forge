@@ -12,6 +12,7 @@ from .linker import link_store_into_env
 from .metadata import (
     decrement_ref_count,
     get_connection,
+    get_package,
     get_package_by_name_version,
     increment_ref_count,
     init_db,
@@ -35,25 +36,27 @@ def install_to_store(
     name, version = parse_pkg_spec(pkg_spec)
     fingerprint = generate_fingerprint(name, version)
     store_path = get_store_path(fingerprint)
-    store_path.mkdir(parents=True, exist_ok=True)
-
-    cmd = [sys.executable, "-m", "pip", "install", pkg_spec, "--target", str(store_path)]
-    completed = subprocess.run(cmd, check=False, capture_output=True, text=True)
-    if completed.returncode != 0:
-        raise RuntimeError(
-            "pip install failed\n"
-            f"command: {' '.join(cmd)}\n"
-            f"stdout:\n{completed.stdout}\n"
-            f"stderr:\n{completed.stderr}"
-        )
-
-    if not any(store_path.iterdir()):
-        raise RuntimeError(f"pip install produced no files at: {store_path}")
 
     conn = get_connection()
     try:
         init_db(conn)
-        register_package(conn, fingerprint, store_path)
+        existing = get_package(conn, fingerprint)
+        if existing and Path(existing["path"]).exists() and any(Path(existing["path"]).iterdir()):
+            store_path = Path(existing["path"])
+        else:
+            store_path.mkdir(parents=True, exist_ok=True)
+            cmd = [sys.executable, "-m", "pip", "install", pkg_spec, "--target", str(store_path)]
+            completed = subprocess.run(cmd, check=False, capture_output=True, text=True)
+            if completed.returncode != 0:
+                raise RuntimeError(
+                    "pip install failed\n"
+                    f"command: {' '.join(cmd)}\n"
+                    f"stdout:\n{completed.stdout}\n"
+                    f"stderr:\n{completed.stderr}"
+                )
+            if not any(store_path.iterdir()):
+                raise RuntimeError(f"pip install produced no files at: {store_path}")
+            register_package(conn, fingerprint, store_path)
 
         if env_name:
             env_cfg = load_env_config(env_name)

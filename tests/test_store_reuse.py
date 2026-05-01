@@ -225,3 +225,33 @@ def test_uninstall_local_removes_manifest_symlink_and_decrements_refcount(tmp_pa
             conn.close()
     finally:
         os.environ.pop("FORGE_HOME", None)
+
+
+def test_install_to_store_reuses_existing_exact_store_package(tmp_path, monkeypatch) -> None:
+    os.environ["FORGE_HOME"] = str(tmp_path / ".forge")
+    try:
+        calls = {"count": 0}
+
+        class DummyCompleted:
+            def __init__(self) -> None:
+                self.returncode = 0
+                self.stdout = "ok"
+                self.stderr = ""
+
+        def fake_run(cmd, check, capture_output, text):  # noqa: ANN001
+            calls["count"] += 1
+            target = Path(cmd[-1])
+            (target / "numpy").mkdir(parents=True, exist_ok=True)
+            (target / "numpy" / "__init__.py").write_text("__version__='1.26.4'\n", encoding="utf-8")
+            (target / "numpy-1.26.4.dist-info").mkdir(parents=True, exist_ok=True)
+            return DummyCompleted()
+
+        monkeypatch.setattr("forge.pip_shim.subprocess.run", fake_run)
+
+        first = install_to_store("numpy==1.26.4")
+        second = install_to_store("numpy==1.26.4")
+
+        assert first == second
+        assert calls["count"] == 1
+    finally:
+        os.environ.pop("FORGE_HOME", None)

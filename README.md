@@ -64,20 +64,51 @@ forge/
 - Commit in small, reviewable units.
 - Push to GitHub only when explicitly requested.
 
-## Day 1 Deliverables
+## Build Log
 
-- project scaffold created
-- baseline package/test files created
-- README with scope, architecture intent, and delivery workflow
+### Day 1
+- Scaffolded project structure and packaging entrypoint.
+- Added baseline README and delivery workflow.
 
-## Next Immediate Target (Day 2)
+### Day 2
+- Implemented Forge path config, fingerprint generation, and SQLite metadata layer.
+- Added first tests for deterministic store identity and refcount lifecycle.
 
-Implement:
-- `src/forge/config.py`
-- `src/forge/fingerprint.py`
-- `src/forge/metadata.py`
+### Day 3
+- Implemented env creation, linker, `.pth` runtime layering, and pip shim integration.
+- Added end-to-end install/link tests.
 
-Goal for Day 2:
-- initialize `~/.forge` directories
-- create SQLite schema
-- compute deterministic store path fingerprints
+### Day 4
+- Implemented resolver conflict modes (`loose`, `warn`, `strict`), `inspect`, `tree`, and GC dry-run command.
+- Added resolver and GC validation tests.
+
+### Day 5
+- Added `forge install ... --local` flow and env manifest recording.
+- Improved `inspect` output to show local/parent/global candidates.
+
+### Day 6
+- Added `forge activate <env>` with deterministic layered `PYTHONPATH` export output.
+- Added env Python version defaulting and install-time compatibility checks.
+
+### Day 7
+- Introduced typed models for inspect/gc output.
+- Added `--json` output support for `inspect` and `gc`.
+- Added `.gitignore` entries for Python cache artifacts.
+
+### Day 8
+- Added `gc --force` destructive cleanup path.
+- Added `doctor` consistency checks for metadata/filesystem drift and broken symlinks.
+
+### Day 9
+- Added `forge uninstall <pkg> --env <env> --local`.
+- Implemented symlink cleanup + manifest cleanup + ref_count decrement behavior.
+
+### Day 10 (Current Slice)
+- Added exact store package reuse in `forge pip install` path to skip redundant reinstalls.
+- Added test coverage verifying second identical install reuses cached store content.
+
+## Next Milestones
+
+- Add ABI-compatible reuse policy and warnings (`reuse + warn`) instead of exact-only behavior.
+- Add `inspect` output for shadowing rationale (why selected layer won).
+- Harden GC/doctor with optional auto-fix suggestions and richer summary stats.
